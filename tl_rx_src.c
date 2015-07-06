@@ -93,7 +93,7 @@ void tr_info_list_print(struct tr_info_list *list){
 
 static void tl_mcs_send_timer_func(unsigned long data){
 	static unsigned char mcs = 0;
-	unsigned int tr_id = 0;
+	static unsigned int tr_id = 0;
 	unsigned int i = 0;
 	
 	if (mcs == 0){	
