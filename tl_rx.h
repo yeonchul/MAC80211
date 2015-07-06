@@ -136,5 +136,6 @@ unsigned int tr_get_tf_k(void);
 unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
 void trinfo_print(struct tr_info *info);
+unsigned int get_tot_rcv(struct tr_info* info);
 
 #endif

@@ -11,10 +11,17 @@ static struct timer_list tl_rx_tf1_timer;
 static struct timer_list tl_rx_tf2_timer;
 static struct timer_list tl_rx_tr2_timer;
 
+static struct timer_list tl_2hop_mcs_send_timer;
+static void tl_2hop_mcs_send_timer_func(unsigned long data);
+
+
 static unsigned char multicast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
 
 static unsigned int tf1_prev_rcv_num = 0;
 static unsigned int tf2_prev_rcv_num = 0;
+
+static unsigned int last_tf2_id = 0;
+static struct net_device * dev_send2;
 
 static void tl_rx_tr2_timer_func(unsigned long data){
 	struct tr_info_list *list = (struct tr_info_list *) data;
@@ -120,14 +127,16 @@ static void tl_rx_tf_timer_func(unsigned long data){
 		default : return;
 	}
 	
-	if(*prev_rcv_num < info->rcv_num[0]){
-		printk("Set timer, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, info->rcv_num[0]);
-		*prev_rcv_num = info->rcv_num[0];
+	if(*prev_rcv_num < get_tot_rcv(info)){
+		printk("Reset timer due to consecutive RX, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, get_tot_rcv(info));
+		*prev_rcv_num = get_tot_rcv(info);
 		mod_timer(tf_timer, jiffies + HZ);
+		return;
 	}
 	else{
-		printk("Del timer, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, info->rcv_num[0]);
-		return;
+		printk("Del timer, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, get_tot_rcv(info));
+		if (timer_pending(tf_timer))
+			del_timer_sync(tf_timer);		
 	}
 	
 	if(info != NULL){
@@ -184,7 +193,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		unsigned char mcs = (unsigned char) skb->data[13];
 		//unsigned int tf1_rest = tf1_k/4 - tf1_seq/4 + 1;
 		
-		//printk(KERN_INFO "skb type : %d k: %d seq: %d id: %d mcs: %d\n", skb_type, tf1_k, tf1_seq, tf1_index, mcs);
+		printk(KERN_INFO "skb type : %d k: %d seq: %d id: %d mcs: %d\n", skb_type, tf1_k, tf1_seq, tf1_index, mcs);
 		
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
@@ -200,7 +209,8 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, 0);
-				trinfo_print(tf1_info);
+				tf1_cur_index = tf1_index;
+			//	trinfo_print(tf1_info);
 			}
 
 			if(!memcmp(tf1_info->addr, skb_saddr, ETH_ALEN) && tf1_cur_index == tf1_index){
@@ -216,6 +226,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				
 				tr_set_param(false, false, 10, 0, 0, 0, 0);
 				printk(KERN_INFO "Receive first TypeOneTf, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
+				
 
 				tr_info_free(tf2_info);
 				tf2_info = NULL;
@@ -229,6 +240,8 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				tf1_info->dev = skb->dev;
 				tf1_info->total_num = tf1_k;
 				memcpy(tf1_info->rcv_num, rcv, sizeof(unsigned int)*NUM_MCS);
+				(tf1_info->rcv_num[mcs])++;
+				
 				trinfo_print(tf1_info);
 				
 				tf1_prev_rcv_num = 0;
@@ -252,7 +265,8 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		else{
 			// Initialize
 			if(tf2_info == NULL){
-				unsigned int rcv[NUM_MCS] = {0}; //may incur an error
+				unsigned int rcv[NUM_MCS]; //may incur an error
+				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf2_info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, 0, 0);
 			}
 			if(!memcmp(tf2_info->addr, skb_saddr, ETH_ALEN) && tf2_cur_index == tf2_index){
@@ -261,7 +275,9 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				if(!timer_pending(&tl_rx_tf2_timer)) mod_timer(&tl_rx_tf2_timer, jiffies + HZ/10);
 			}
 			else{
-				unsigned int rcv[NUM_MCS] = {0}; //may incur an error
+				unsigned int rcv[NUM_MCS]; //may incur an error
+				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
+				tf2_info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, 0, 0);
 				//printk("tf2_info->addr = %x:%x:%x:%x:%x:%x, %d != %d\n", tf2_info->addr[0], tf2_info->addr[1], tf2_info->addr[2], tf2_info->addr[3], tf2_info->addr[4], tf2_info->addr[5], tf2_cur_index, tf2_index);
 			//	printk("Receive TypeTwoTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 				
@@ -275,6 +291,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				tf2_info->dev = skb->dev;
 				tf2_info->total_num = tf2_k;
 				memcpy(tf2_info->rcv_num, rcv, sizeof(unsigned int)*NUM_MCS);
+				(tf2_info->rcv_num[mcs])++;
 				
 				tf2_prev_rcv_num = 0;
 				tf2_cur_index = tf2_index;
@@ -321,50 +338,17 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 
 	else if(skb_type == SendTF){
 		unsigned int skb_k = (unsigned int) skb->data[1] << 24 | skb->data[2] << 16 | skb->data[3] << 8 | skb->data[4];
-		static unsigned int last_tf2_id = 0;
-		unsigned int i;
-		unsigned int j;
 		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
 			printk("Receive SendTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 			if(sdf_info == NULL){
-				unsigned int tf2_id = 0;
-				unsigned int rcv[NUM_MCS] = {0};
+				unsigned int rcv[NUM_MCS];
+				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS);
+
+				dev_send2 = skb->dev;
 				sdf_info = tr_info_create(skb_saddr, skb->dev, skb_k, rcv, 0, 0);
 				printk("Send TypeTwoTF Message(%d); k = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", TypeTwoTF, skb_k, skb->dev->dev_addr[0], skb->dev->dev_addr[1], skb->dev->dev_addr[2], skb->dev->dev_addr[3], skb->dev->dev_addr[4], skb->dev->dev_addr[5], multicast_addr[0], multicast_addr[1], multicast_addr[2], multicast_addr[3], multicast_addr[4], multicast_addr[5]);
-				
-				get_random_bytes(&tf2_id, 4);
-				if(tf2_id == last_tf2_id){
-					get_random_bytes(&tf2_id, 4);
-				}
-				
-				for (j=0; j < NUM_MCS; j++){
-					for(i = 0; i < skb_k; i++){
-						struct sk_buff *rpt = tl_alloc_skb(skb->dev, multicast_addr, skb->dev->dev_addr, TF_SIZE, TypeTwoTF);
-						if(rpt != NULL){
-							struct ieee80211_tx_info *info = IEEE80211_SKB_CB(rpt);
-							rpt->data[ETHERHEADLEN + 1] = (skb_k >> 24) & 0xff;
-							rpt->data[ETHERHEADLEN + 2] = (skb_k >> 16) & 0xff;
-							rpt->data[ETHERHEADLEN + 3] = (skb_k >> 8) & 0xff;
-							rpt->data[ETHERHEADLEN + 4] = skb_k & 0xff;
-							rpt->data[ETHERHEADLEN + 5] = (i >> 24) & 0xff;
-							rpt->data[ETHERHEADLEN + 6] = (i >> 16) & 0xff;
-							rpt->data[ETHERHEADLEN + 7] = (i >> 8) & 0xff;
-							rpt->data[ETHERHEADLEN + 8] = i & 0xff;
-							rpt->data[ETHERHEADLEN + 9] = (tf2_id >> 24) & 0xff;
-							rpt->data[ETHERHEADLEN + 10] = (tf2_id >> 16) & 0xff;
-							rpt->data[ETHERHEADLEN + 11] = (tf2_id >> 8) & 0xff;
-							rpt->data[ETHERHEADLEN + 12] = tf2_id & 0xff;
-							rpt->data[ETHERHEADLEN+13] = j;
-							get_random_bytes(&(rpt->data[ETHERHEADLEN + 14]), TF_SIZE - (ETHERHEADLEN + 14));
-							info->control.rates[0].idx = j;
-							dev_queue_xmit(rpt);
-						}
-						else{
-							printk("Fail in tl_alloc_skb!!\n");
-						}
-					}
-				}
-				last_tf2_id = tf2_id;
+			
+				tl_2hop_mcs_send_timer_func(0);
 			}
 			else{
 				printk("Receive duplicate SendTF\n");
@@ -389,3 +373,61 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 //	netif_receive_skb(skb);	
 	dev_kfree_skb(skb);
 }
+
+
+static void tl_2hop_mcs_send_timer_func(unsigned long data){
+	static unsigned char mcs = 0;
+	static unsigned int tr_id = 0;
+	unsigned int i = 0;
+	
+	if (mcs == 0){	
+		setup_timer(&tl_2hop_mcs_send_timer, &tl_2hop_mcs_send_timer_func, 0 );
+		get_random_bytes(&tr_id, 4);
+		if (tr_id == last_tf2_id){
+			get_random_bytes(&tr_id, 4);
+		}
+		last_tf2_id = tr_id;
+	}
+
+		printk("Send TypeTwoTF Message(%d), tf_k = %d with MCS %x\n", TypeTwoTF, sdf_info->total_num, mcs);
+	for(i = 0; i < sdf_info->total_num; i++){
+		struct sk_buff *otf = tl_alloc_skb(dev_send2, multicast_addr, dev_send2->dev_addr, TF_SIZE, TypeTwoTF);
+		if(otf != NULL){
+			struct ieee80211_tx_info *info = IEEE80211_SKB_CB(otf);
+			otf->data[ETHERHEADLEN + 1] = (sdf_info->total_num >> 24) & 0xff;
+			otf->data[ETHERHEADLEN + 2] = (sdf_info->total_num >> 16) & 0xff;
+			otf->data[ETHERHEADLEN + 3] = (sdf_info->total_num >> 8) & 0xff;
+			otf->data[ETHERHEADLEN + 4] = sdf_info->total_num & 0xff;
+			otf->data[ETHERHEADLEN + 5] = (i >> 24) & 0xff;
+			otf->data[ETHERHEADLEN + 6] = (i >> 16) & 0xff;
+			otf->data[ETHERHEADLEN + 7] = (i >> 8) & 0xff;
+			otf->data[ETHERHEADLEN + 8] = i & 0xff;
+			otf->data[ETHERHEADLEN + 9] = (tr_id >> 24) & 0xff;
+			otf->data[ETHERHEADLEN + 10] = (tr_id >> 16) & 0xff;
+			otf->data[ETHERHEADLEN + 11] = (tr_id >> 8) & 0xff;
+			otf->data[ETHERHEADLEN + 12] = tr_id & 0xff;
+			otf->data[ETHERHEADLEN+13] =  mcs;
+			get_random_bytes(&(otf->data[ETHERHEADLEN + 14]), TF_SIZE - (ETHERHEADLEN + 14));
+			info->control.rates[0].idx = mcs;
+			dev_queue_xmit(otf);
+		}
+	}
+
+	if (mcs < NUM_MCS-1)
+	{
+		unsigned int tx_time = cal_tx_time (mcs, sdf_info->total_num, TF_SIZE)/1000;
+		printk("Schedule next TX after %d ms with MCS %d\n", tx_time, mcs);	
+		if(!timer_pending(&tl_2hop_mcs_send_timer))	
+			mod_timer(&tl_2hop_mcs_send_timer, jiffies + msecs_to_jiffies(tx_time));
+		
+		mcs++;
+	}
+	else
+	{
+		if(timer_pending(&tl_2hop_mcs_send_timer))	
+			del_timer(&tl_2hop_mcs_send_timer);
+		
+		mcs = 0;
+	}
+}
+
