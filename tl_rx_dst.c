@@ -198,7 +198,6 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 			// Initialize
 			if(tf1_info == NULL){
 				unsigned int rcv[NUM_MCS];
-				int i=0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, 0);
 				trinfo_print(tf1_info);

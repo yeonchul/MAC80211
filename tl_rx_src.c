@@ -93,7 +93,7 @@ void tr_info_list_print(struct tr_info_list *list){
 
 static void tl_mcs_send_timer_func(unsigned long data){
 	static unsigned char mcs = 0;
-	unsigned int tr_id = 0;
+	static unsigned int tr_id = 0;
 	unsigned int i = 0;
 	
 	if (mcs == 0){	
@@ -187,8 +187,6 @@ static void tl_rx_tr1_timer_func(unsigned long data){
 	struct tr_info *info = (&src_nbr_list)->next;
 
 	printk("1-hop training end\n");
-	return;
-
 	polling_state = true;
 
 	while(info != NULL){
@@ -259,10 +257,12 @@ void tl_receive_skb_src(struct sk_buff *skb){
 		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
 			if(!polling_state){
 				struct tr_info *info;
-				unsigned int n_rcv[NUM_MCS]={0};
+				unsigned int n_rcv[NUM_MCS];
 				int i=0;
 				unsigned char rssi = (unsigned char) skb->data[1];
 				unsigned char batt = (unsigned char) skb->data[2];
+				
+				memset(n_rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				
 				for (i=0; i < NUM_MCS; i++){	
 					n_rcv[i] = (unsigned int) skb->data[3+4*i] << 24 | skb->data[4+4*i] << 16 | skb->data[5+4*i] << 8 | skb->data[6+4*i];	
