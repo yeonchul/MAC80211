@@ -209,7 +209,7 @@ static void tl_rx_tr1_timer_func(unsigned long data){
 					info->nr_cnt = false;
 
 					setup_timer(&tl_rx_sndtf_timer, &tl_rx_sndtf_timer_func, (unsigned long) info);
-					mod_timer(&tl_rx_sndtf_timer, jiffies + 3*HZ);
+					mod_timer(&tl_rx_sndtf_timer, jiffies + 10*HZ);
 					
 					tr_info_list_print(&src_nbr_list);
 					return;
@@ -286,7 +286,7 @@ void tl_receive_skb_src(struct sk_buff *skb){
 					tr_info_list_purge(&(info->nbr_list));
 				}
 				//if(skb_n > (tr_get_tf_k()/10)*8) mod_timer(&tl_rx_tr1_timer, jiffies + 70);
-				mod_timer(&tl_rx_tr1_timer, jiffies + HZ/5);
+				mod_timer(&tl_rx_tr1_timer, jiffies + 2*HZ);
 				tr_info_list_print(&src_nbr_list);
 			}
 			else{
@@ -318,8 +318,8 @@ void tl_receive_skb_src(struct sk_buff *skb){
 								int ii = i * (ETH_ALEN + 2 + 4*NUM_MCS);
 								int j=0;
 								unsigned char *nbr_addr = &(skb->data[ii + 6]);
-								unsigned char rssi = skb->data[ii+7];
-								unsigned char batt = skb->data[ii+8];
+								unsigned char rssi = skb->data[ii+ 6 + ETH_ALEN];
+								unsigned char batt = skb->data[ii+ 6+ ETH_ALEN+1];
 								unsigned int n_rcv[NUM_MCS];
 								for (j=0; j < NUM_MCS; j++){
 									n_rcv[j] = (unsigned int) skb->data[ii + 6 + ETH_ALEN + 2 + 4*j ] << 24 | skb->data[ii + 6 + ETH_ALEN + 3 + 4*j] << 16 | skb->data[ii + 6 + ETH_ALEN + 4 + 4*j] << 8 | skb->data[ii + 6 + ETH_ALEN + 5 + 4*j];
