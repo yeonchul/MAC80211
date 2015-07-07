@@ -141,7 +141,7 @@ static void tl_rx_tf1_timer_func(unsigned long data){
 			rpt->data[ETHERHEADLEN + 5 + i*4] = (info->rcv_num[i] >> 8) & 0xff;
 			rpt->data[ETHERHEADLEN + 6 + i*4] = info->rcv_num[i] & 0xff;
 		}
-		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d, rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7] );
+		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d rcv8 = %d rcv9 = %d rcv10 = %d rcv11 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
 		dev_queue_xmit(rpt);
 	}
 	else{
@@ -200,14 +200,14 @@ static void tl_rx_tf2_timer_func(unsigned long data){
 			rpt->data[ETHERHEADLEN + 5 + i*4] = (info->rcv_num[i] >> 8) & 0xff;
 			rpt->data[ETHERHEADLEN + 6 + i*4] = info->rcv_num[i] & 0xff;
 		}
-		printk(KERN_INFO "send 2-hop training report \n rssi = %d, batt = %d, rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7] );
+		printk(KERN_INFO "send 2-hop training report \n rssi = %d, batt = %d rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d rcv8 = %d rcv9 = %d rcv10 = %d rcv11 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
 		dev_queue_xmit(rpt);
 	}
 	else{
 		printk("Fail in tl_alloc_skb!!\n");
 	}
 }
-void tl_receive_skb_dst(struct sk_buff *skb){
+void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 	static struct tr_info_list tr2_list;
 
 	enum tr_type skb_type = skb->data[0];
@@ -236,7 +236,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		unsigned char mcs = (unsigned char) skb->data[13];
 		//unsigned int tf1_rest = tf1_k/4 - tf1_seq/4 + 1;
 		
-		//printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
+		//	printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
 		
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
@@ -364,7 +364,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
 			if(sdf_info != NULL){
 				struct tr_info *info;
-				printk("Receive TypeTwoTR Message(%d); rssi = %x, batt = %x, rcv0 = %d, rcv1 = %d, rcv2 = %d, rcv3 = %d, rcv4 = %d, rcv5 = %d, rcv6 = %d, rcv7 = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, rssi, batt, n_rcv[0],  n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7], skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+				printk("Receive TypeTwoTR Message(%d); rssi = %x, batt = %x, rcv0 = %d, rcv1 = %d, rcv2 = %d, rcv3 = %d, rcv4 = %d, rcv5 = %d, rcv6 = %d, rcv7 = %d, rcv8 = %d, rcv9 = %d, rcv10 = %d, rcv11 = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, rssi, batt, n_rcv[0],  n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7], n_rcv[8], n_rcv[9], n_rcv[10], n_rcv[11],skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 
 				if((info = tr_info_find_addr(&tr2_list, skb_saddr)) == NULL){
 					tr_info_insert(tr_info_create(skb_saddr, skb->dev, sdf_info->total_num, n_rcv, rssi, batt), &tr2_list);

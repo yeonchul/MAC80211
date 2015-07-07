@@ -16,12 +16,12 @@
 #define MNPRELAY 0
 
 #define ETHERHEADLEN 14
-#define NUM_MCS 8
+#define NUM_MCS 12
 
 #define WLAN_MODE 0 //0: 11g, 1: 11a
 
 void tl_receive_skb_src(struct sk_buff *skb);
-void tl_receive_skb_dst(struct sk_buff *skb);
+void tl_receive_skb_dst(struct sk_buff *skb, char rssi);
 
 enum tr_type {
 	TypeOneTF 	= 1,

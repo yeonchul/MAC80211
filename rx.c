@@ -2055,7 +2055,10 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 	struct ethhdr *ehdr = (struct ethhdr *) rx->skb->data;
 	struct sta_info *dsta;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+	char sig=0;
 
+	sig = status->signal;	
+	
 	dev->stats.rx_packets++;
 	dev->stats.rx_bytes += rx->skb->len;
 
@@ -2127,7 +2130,7 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 		//	napi_gro_receive(rx->local->napi, skb);
 		//}
 		//else
-			decoding_try(skb);
+			decoding_try(skb, sig);
 			//	netif_receive_skb(skb);
 	}
 
@@ -2351,7 +2354,8 @@ ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 	__le16 fc = hdr->frame_control;
 	bool port_control;
 	int err;
-
+	
+	
 	if (unlikely(!ieee80211_is_data(hdr->frame_control)))
 		return RX_CONTINUE;
 
@@ -3109,6 +3113,7 @@ static void ieee80211_rx_handlers_result(struct ieee80211_rx_data *rx,
 		struct ieee80211_rx_status *status;
 
 		status = IEEE80211_SKB_RXCB((rx->skb));
+				
 
 		sband = rx->local->hw.wiphy->bands[status->band];
 		if (!(status->flag & RX_FLAG_HT) &&
@@ -3405,6 +3410,8 @@ static bool ieee80211_prepare_and_rx_handle(struct ieee80211_rx_data *rx,
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 	struct ieee80211_hdr *hdr = (void *)skb->data;
 
+	//printk(KERN_INFO "ieee80211_prepare_and_rx_handle start signal: %d\n", status->signal);
+	
 	rx->skb = skb;
 	status->rx_flags |= IEEE80211_RX_RA_MATCH;
 
@@ -3565,7 +3572,9 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 	sband = local->hw.wiphy->bands[status->band];
 	if (WARN_ON(!sband))
 		goto drop;
-
+	
+	//printk(KERN_INFO "ieee80211_rx start signal: %d\n", status->signal);
+	
 	/*
 	 * If we're suspending, it is possible although not too likely
 	 * that we'd be receiving frames after having already partially

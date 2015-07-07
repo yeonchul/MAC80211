@@ -20,7 +20,7 @@ struct mnc_queue_head{
 	unsigned int qlen;
 };
 
-void decoding_try(struct sk_buff *skb);
+void decoding_try(struct sk_buff *skb, char rssi);
 
 void mnc_queue_head_init(struct mnc_queue_head *list);
 
