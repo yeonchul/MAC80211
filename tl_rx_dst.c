@@ -41,21 +41,7 @@ static void tl_rx_tr2_timer_func(unsigned long data){
 	qlen = list->qlen;	
 	size = ETHERHEADLEN + 6 + ((ETH_ALEN + 2 + 4*NUM_MCS) * qlen);
 	info = list->next;
-	
-	/*
-	printk("qlen = %d, size = %d\n", qlen, size);
-	test_info = list->next;
-	while(test_info != NULL){
-		struct tr_info *test_src_nbr_list_info = (&(test_info->nbr_list))->next;
-		printk(KERN_INFO "Relay candidate %x:%x:%x:%x:%x:%x, %d/%d, %d, %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->total_num, test_info->rcv_num, test_info->tf_cnt, test_info->nr_cnt);
-		while(test_src_nbr_list_info != NULL){
-			printk(KERN_INFO "-> %x:%x:%x:%x:%x:%x, %d/%d, %d, %d\n", test_src_nbr_list_info->addr[0], test_src_nbr_list_info->addr[1], test_src_nbr_list_info->addr[2], test_src_nbr_list_info->addr[3], test_src_nbr_list_info->addr[4], test_src_nbr_list_info->addr[5], test_src_nbr_list_info->total_num, test_src_nbr_list_info->rcv_num, test_src_nbr_list_info->tf_cnt, test_src_nbr_list_info->nr_cnt);
-			test_src_nbr_list_info = test_src_nbr_list_info->next;
-		}
-		test_info = test_info->next;
-	}
-	*/
-	
+
 	if(info == NULL){
 		printk("Empty list\n");
 		return;
@@ -112,35 +98,33 @@ static void tl_rx_tr2_timer_func(unsigned long data){
 	sdf_info = NULL;
 }
 
-static void tl_rx_tf_timer_func(unsigned long data){
-	enum tr_type rpt_type = (enum tr_type) data;
-
+static void tl_rx_tf1_timer_func(unsigned long data){
 	struct tr_info *info;
-	unsigned int *prev_rcv_num;
-	struct timer_list *tf_timer;
 	struct sk_buff *rpt = NULL;
 	int i = 0;
 
+	info = tf1_info;
+/*		
 	switch(rpt_type){
-		case TypeOneTR : info = tf1_info; prev_rcv_num = &tf1_prev_rcv_num; tf_timer = &tl_rx_tf1_timer; break;
-		case TypeTwoTR : info = tf2_info; prev_rcv_num = &tf2_prev_rcv_num; tf_timer = &tl_rx_tf2_timer; break;
+		case TypeOneTR : info = tf1_info; prev_rcv_num = &tf1_prev_rcv_num; tf_timer = &tl_rx_tf1_timer; hop=1; break;
+		case TypeTwoTR : info = tf2_info; prev_rcv_num = &tf2_prev_rcv_num; tf_timer = &tl_rx_tf2_timer; hop=2; break;
 		default : return;
 	}
-	
-	if(*prev_rcv_num < get_tot_rcv(info)){
-		printk("Reset timer due to consecutive RX, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, get_tot_rcv(info));
-		*prev_rcv_num = get_tot_rcv(info);
-		mod_timer(tf_timer, jiffies + HZ);
+*/	
+	if(tf1_prev_rcv_num < get_tot_rcv(info)){
+		printk("Reset timer due to consecutive RX, prev_rcv_num1 = %d, info1->rcv_num = %d\n", tf1_prev_rcv_num, get_tot_rcv(info));
+		tf1_prev_rcv_num = get_tot_rcv(info);
+		mod_timer(&tl_rx_tf1_timer, jiffies + HZ);
 		return;
 	}
 	else{
-		printk("Del timer, prev_rcv_num = %d, info->rcv_num = %d\n", *prev_rcv_num, get_tot_rcv(info));
-		if (timer_pending(tf_timer))
-			del_timer_sync(tf_timer);		
+		printk("Del timer, prev_rcv_num1 = %d, info1->rcv_num = %d\n", tf1_prev_rcv_num, get_tot_rcv(info));
+	//	if (timer_pending(tf_timer))
+	//		del_timer_sync(tf_timer);		
 	}
 	
 	if(info != NULL){
-		rpt = tl_alloc_skb(info->dev, info->addr, info->dev->dev_addr, TR_SIZE, rpt_type);
+		rpt = tl_alloc_skb(info->dev, info->addr, info->dev->dev_addr, TR_SIZE, TypeOneTR);
 	}
 	else{
 		printk("NULL info\n");
@@ -157,13 +141,53 @@ static void tl_rx_tf_timer_func(unsigned long data){
 		}
 		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d, rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7] );
 		dev_queue_xmit(rpt);
-		//printk("Send TypeTR Message(%d); rcv = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", rpt_type, info->rcv_num, info->dev->dev_addr[0], info->dev->dev_addr[1], info->dev->dev_addr[2], info->dev->dev_addr[3], info->dev->dev_addr[4], info->dev->dev_addr[5], info->addr[0], info->addr[1], info->addr[2], info->addr[3], info->addr[4], info->addr[5]);
 	}
 	else{
 		printk("Fail in tl_alloc_skb!!\n");
 	}
 }
+static void tl_rx_tf2_timer_func(unsigned long data){
+	struct tr_info *info;
+	struct sk_buff *rpt = NULL;
+	int i = 0;
 
+	info = tf2_info;
+	
+	if(tf2_prev_rcv_num < get_tot_rcv(info)){
+		printk("Reset timer due to consecutive RX, prev_rcv_num2 = %d, info2->rcv_num = %d\n", tf2_prev_rcv_num, get_tot_rcv(info));
+		tf2_prev_rcv_num = get_tot_rcv(info);
+		mod_timer(&tl_rx_tf2_timer, jiffies + HZ);
+		return;
+	}
+	else{
+		printk("Del timer, prev_rcv_num2 = %d, info2->rcv_num = %d\n", tf2_prev_rcv_num, get_tot_rcv(info));
+	//	if (timer_pending(tf_timer))
+	//		del_timer_sync(tf_timer);		
+	}
+	
+	if(info != NULL){
+		rpt = tl_alloc_skb(info->dev, info->addr, info->dev->dev_addr, TR_SIZE, TypeTwoTR);
+	}
+	else{
+		printk("NULL info\n");
+	}
+	
+	if(rpt != NULL){
+		rpt->data[ETHERHEADLEN + 1] = info->rssi;
+		rpt->data[ETHERHEADLEN + 2] = info->batt;
+		for (i=0; i < NUM_MCS; i++){
+			rpt->data[ETHERHEADLEN + 3 + i*4] = (info->rcv_num[i] >> 24) & 0xff;
+			rpt->data[ETHERHEADLEN + 4 + i*4] = (info->rcv_num[i] >> 16) & 0xff;
+			rpt->data[ETHERHEADLEN + 5 + i*4] = (info->rcv_num[i] >> 8) & 0xff;
+			rpt->data[ETHERHEADLEN + 6 + i*4] = info->rcv_num[i] & 0xff;
+		}
+		printk(KERN_INFO "send 2-hop training report \n rssi = %d, batt = %d, rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7] );
+		dev_queue_xmit(rpt);
+	}
+	else{
+		printk("Fail in tl_alloc_skb!!\n");
+	}
+}
 void tl_receive_skb_dst(struct sk_buff *skb){
 	static struct tr_info_list tr2_list;
 
@@ -178,8 +202,8 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 	if(for_init == true){
 		tr_info_list_init(&tr2_list);
 		
-		setup_timer(&tl_rx_tf1_timer, &tl_rx_tf_timer_func, TypeOneTR);
-		setup_timer(&tl_rx_tf2_timer, &tl_rx_tf_timer_func, TypeTwoTR);
+		setup_timer(&tl_rx_tf1_timer, &tl_rx_tf1_timer_func, TypeOneTR);
+		setup_timer(&tl_rx_tf2_timer, &tl_rx_tf2_timer_func, TypeTwoTR);
 		setup_timer(&tl_rx_tr2_timer, &tl_rx_tr2_timer_func, (unsigned long)(&tr2_list));
 
 		for_init = false;
@@ -193,7 +217,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		unsigned char mcs = (unsigned char) skb->data[13];
 		//unsigned int tf1_rest = tf1_k/4 - tf1_seq/4 + 1;
 		
-		printk(KERN_INFO "skb type : %d k: %d seq: %d id: %d mcs: %d\n", skb_type, tf1_k, tf1_seq, tf1_index, mcs);
+		//printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
 		
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
@@ -209,7 +233,10 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, 0);
+				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
+		
 				tf1_cur_index = tf1_index;
+				tf1_prev_rcv_num = 0;
 			//	trinfo_print(tf1_info);
 			}
 
@@ -244,7 +271,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				
 				trinfo_print(tf1_info);
 				
-				tf1_prev_rcv_num = 0;
+				tf1_prev_rcv_num = 1;
 				tf1_cur_index = tf1_index;
 			}
 		}
@@ -259,6 +286,8 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 		unsigned char mcs = (unsigned char) skb->data[13];
 		//unsigned int tf2_rest = tf2_k/4 - tf2_seq/4 + 1;
 		
+		//printk(KERN_INFO "skb type: TypeTwo  k: %d seq: %d id: %d mcs: %d\n", tf2_k, tf2_seq, tf2_index, mcs);
+		
 		if(tf2_k < tf2_seq){
 			printk("ERROR, tf2_k is lower than tf2_seq\n");
 		}
@@ -268,11 +297,14 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf2_info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, 0, 0);
+				tf2_cur_index = tf2_index;
+				tf2_prev_rcv_num = 0;
+				printk(KERN_INFO "Initialize skb type: TypeTwo k: %d seq: %d id: %d mcs: %d\n", tf2_k, tf2_seq, tf2_index, mcs);
 			}
 			if(!memcmp(tf2_info->addr, skb_saddr, ETH_ALEN) && tf2_cur_index == tf2_index){
 				//printk("tf2_k = %d, tf2_seq = %d\n", tf2_k, tf2_seq);
 				(tf2_info->rcv_num[mcs])++;
-				if(!timer_pending(&tl_rx_tf2_timer)) mod_timer(&tl_rx_tf2_timer, jiffies + HZ/10);
+				if(!timer_pending(&tl_rx_tf2_timer)) mod_timer(&tl_rx_tf2_timer, jiffies + HZ);
 			}
 			else{
 				unsigned int rcv[NUM_MCS]; //may incur an error
@@ -328,7 +360,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 					info->nr_cnt = false;
 					tr_info_list_purge(&(info->nbr_list));
 				}
-				mod_timer(&tl_rx_tr2_timer, jiffies + HZ/5);
+				mod_timer(&tl_rx_tr2_timer, jiffies + HZ);
 			}
 			else{
 				printk("sdf_info is NULL when TR2 is arrived\n");
