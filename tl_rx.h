@@ -33,7 +33,11 @@ enum tr_type {
 	SetRelay	= 7,
 };
 
-
+struct batt_info
+{
+	char m_status;
+	char m_capacity;
+};
 
 struct tr_param{
 	bool src;
@@ -108,6 +112,7 @@ unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len)
 };
 */
 bool tl_start_check(struct sk_buff *skb);
+bool set_batt_info(struct sk_buff *skb);
 void tl_start_time(void);
 struct sk_buff *tl_alloc_skb(struct net_device *dev, unsigned char daddr[], unsigned char saddr[], unsigned int size, enum tr_type type);
 void tl_select_relay(struct tr_info_list *list);

@@ -22,6 +22,8 @@ static unsigned int tf2_prev_rcv_num = 0;
 
 static unsigned int last_tf2_id = 0;
 static struct net_device * dev_send2;
+static struct batt_info batt_i;
+
 
 static void tl_rx_tr2_timer_func(unsigned long data){
 	struct tr_info_list *list = (struct tr_info_list *) data;
@@ -146,6 +148,23 @@ static void tl_rx_tf1_timer_func(unsigned long data){
 		printk("Fail in tl_alloc_skb!!\n");
 	}
 }
+bool set_batt_info(struct sk_buff *skb)
+{	
+	int udp_pos;
+
+	if(skb->len > 42+16+6){
+		printk("Too Large Packet\n");
+		return false;
+	}
+	
+	udp_pos = skb_transport_header(skb) - skb->data;	
+	batt_i.m_status = skb->data[udp_pos+8];		
+	batt_i.m_capacity = skb->data[udp_pos+9];
+
+	printk("Set battery info, status: %d , capacity: %d\n", batt_i.m_status, batt_i.m_capacity);
+	return true;
+}
+
 static void tl_rx_tf2_timer_func(unsigned long data){
 	struct tr_info *info;
 	struct sk_buff *rpt = NULL;
@@ -232,7 +251,7 @@ void tl_receive_skb_dst(struct sk_buff *skb){
 			if(tf1_info == NULL){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, 0);
+				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, batt_i.m_capacity);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
 		
 				tf1_cur_index = tf1_index;
