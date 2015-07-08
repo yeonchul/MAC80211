@@ -8,7 +8,7 @@
 #include <linux/time.h>
 #include <linux/netdevice.h>
 
-#define TR_SIZE 49
+#define TR_SIZE 65  // should be NUM_MCS*4+1+14+2
 #define TF_SIZE 1370
 #define SNDTF_SIZE 19
 #define SETRELAY_SIZE 17
@@ -59,7 +59,7 @@ struct tr_info{
 	struct net_device *dev;
 	unsigned int total_num;
 	unsigned int rcv_num[NUM_MCS];
-	unsigned char rssi;
+	char rssi;
 	unsigned char batt;
 	bool tf_cnt;
 	bool nr_cnt;

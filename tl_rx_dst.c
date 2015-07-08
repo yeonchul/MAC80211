@@ -23,7 +23,7 @@ static unsigned int tf2_prev_rcv_num = 0;
 static unsigned int last_tf2_id = 0;
 static struct net_device * dev_send2;
 static struct batt_info batt_i;
-
+static int rssi_avg[NUM_MCS] = {0};
 
 static void tl_rx_tr2_timer_func(unsigned long data){
 	struct tr_info_list *list = (struct tr_info_list *) data;
@@ -141,7 +141,11 @@ static void tl_rx_tf1_timer_func(unsigned long data){
 			rpt->data[ETHERHEADLEN + 5 + i*4] = (info->rcv_num[i] >> 8) & 0xff;
 			rpt->data[ETHERHEADLEN + 6 + i*4] = info->rcv_num[i] & 0xff;
 		}
-		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv0 = %d, rcv1 = %d  rcv2 = %d rcv3 = %d rcv4 = %d rcv5 = %d rcv6 = %d rcv7 = %d rcv8 = %d rcv9 = %d rcv10 = %d rcv11 = %d\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
+
+		printk(KERN_INFO "RSSIs (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]); 
+		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
+		printk(KERN_INFO "internal 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) rssi_mcs: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11], rssi_avg[0]/(int)info->rcv_num[0], rssi_avg[1]/(int)info->rcv_num[1], rssi_avg[2]/(int)info->rcv_num[2], rssi_avg[3]/(int)info->rcv_num[3], rssi_avg[4]/(int)info->rcv_num[4], rssi_avg[5]/(int)info->rcv_num[5], rssi_avg[6]/(int)info->rcv_num[6], rssi_avg[7]/(int)info->rcv_num[7], rssi_avg[8]/(int)info->rcv_num[8], rssi_avg[9]/(int)info->rcv_num[9], rssi_avg[10]/(int)info->rcv_num[10], rssi_avg[11]/(int)info->rcv_num[11] );
+		
 		dev_queue_xmit(rpt);
 	}
 	else{
@@ -236,7 +240,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 		unsigned char mcs = (unsigned char) skb->data[13];
 		//unsigned int tf1_rest = tf1_k/4 - tf1_seq/4 + 1;
 		
-		//	printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
+		//printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
 		
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
@@ -251,7 +255,9 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			if(tf1_info == NULL){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, 0, batt_i.m_capacity);
+				memset(rssi_avg, 0, sizeof(char)*NUM_MCS);
+				
+				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt_i.m_capacity);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
 		
 				tf1_cur_index = tf1_index;
@@ -262,11 +268,15 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			if(!memcmp(tf1_info->addr, skb_saddr, ETH_ALEN) && tf1_cur_index == tf1_index){
 				//printk("tf1_k = %d, tf1_seq = %d rcv[%d] =%d\n", tf1_k, tf1_seq, mcs, tf1_info->rcv_num[mcs]);
 				(tf1_info->rcv_num[mcs])++;
+				//printk("prev rssi %d current rssi %d int rssi_old %d int rssi_new %d\n", tf1_info->rssi, rssi, (int)tf1_info->rssi, (int)rssi);
+				tf1_info->rssi = (char)((16*8*(int)rssi + (16-8)*(int)tf1_info->rssi*16)/16/16);
+				rssi_avg[mcs] += (int)rssi; 
 				if(!timer_pending(&tl_rx_tf1_timer)) mod_timer(&tl_rx_tf1_timer, jiffies + HZ);
 			}
 			else{
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
+				memset(rssi_avg, 0, sizeof(char)*NUM_MCS);
 				//printk("tf1_info->addr = %x:%x:%x:%x:%x:%x, %d != %d\n", tf1_info->addr[0], tf1_info->addr[1], tf1_info->addr[2], tf1_info->addr[3], tf1_info->addr[4], tf1_info->addr[5], tf1_cur_index, tf1_index);
 				//printk("Receive TypeOneTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 				
@@ -287,12 +297,14 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				tf1_info->total_num = tf1_k;
 				memcpy(tf1_info->rcv_num, rcv, sizeof(unsigned int)*NUM_MCS);
 				(tf1_info->rcv_num[mcs])++;
+				tf1_info->rssi = rssi;
 				
 				trinfo_print(tf1_info);
 				
 				tf1_prev_rcv_num = 1;
 				tf1_cur_index = tf1_index;
 			}
+
 		}
 
 	}
@@ -399,7 +411,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				sdf_info = tr_info_create(skb_saddr, skb->dev, skb_k, rcv, 0, 0);
 				printk("Send TypeTwoTF Message(%d); k = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", TypeTwoTF, skb_k, skb->dev->dev_addr[0], skb->dev->dev_addr[1], skb->dev->dev_addr[2], skb->dev->dev_addr[3], skb->dev->dev_addr[4], skb->dev->dev_addr[5], multicast_addr[0], multicast_addr[1], multicast_addr[2], multicast_addr[3], multicast_addr[4], multicast_addr[5]);
 			
-				tl_2hop_mcs_send_timer_func(0);
+		//		tl_2hop_mcs_send_timer_func(0);
 			}
 			else{
 				printk("Receive duplicate SendTF\n");
