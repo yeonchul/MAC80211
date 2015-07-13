@@ -241,7 +241,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 		//unsigned int tf1_rest = tf1_k/4 - tf1_seq/4 + 1;
 		
 		//printk(KERN_INFO "skb type : TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
-		
+	//	
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
 			return; 
@@ -255,7 +255,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			if(tf1_info == NULL){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-				memset(rssi_avg, 0, sizeof(char)*NUM_MCS);
+				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				
 				tf1_info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt_i.m_capacity);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
@@ -276,7 +276,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			else{
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-				memset(rssi_avg, 0, sizeof(char)*NUM_MCS);
+				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				//printk("tf1_info->addr = %x:%x:%x:%x:%x:%x, %d != %d\n", tf1_info->addr[0], tf1_info->addr[1], tf1_info->addr[2], tf1_info->addr[3], tf1_info->addr[4], tf1_info->addr[5], tf1_cur_index, tf1_index);
 				//printk("Receive TypeOneTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 				
@@ -340,6 +340,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			else{
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
+				memset(rssi_avg, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				tf2_info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, 0, 0);
 				//printk("tf2_info->addr = %x:%x:%x:%x:%x:%x, %d != %d\n", tf2_info->addr[0], tf2_info->addr[1], tf2_info->addr[2], tf2_info->addr[3], tf2_info->addr[4], tf2_info->addr[5], tf2_cur_index, tf2_index);
 			//	printk("Receive TypeTwoTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
