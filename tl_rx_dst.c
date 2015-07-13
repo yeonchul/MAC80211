@@ -142,9 +142,19 @@ static void tl_rx_tf1_timer_func(unsigned long data){
 			rpt->data[ETHERHEADLEN + 6 + i*4] = info->rcv_num[i] & 0xff;
 		}
 
+		for (i=0; i < NUM_MCS; i++)
+		{
+			if(info->rcv_num[i]==0)
+				rssi_avg[i]=0;
+			else 
+				rssi_avg[i] = rssi_avg[i]/(int)info->rcv_num[i];
+		}
+				
+					
+
 		printk(KERN_INFO "RSSIs (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]); 
 		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
-		printk(KERN_INFO "internal 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) rssi_mcs: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11], rssi_avg[0]/(int)info->rcv_num[0], rssi_avg[1]/(int)info->rcv_num[1], rssi_avg[2]/(int)info->rcv_num[2], rssi_avg[3]/(int)info->rcv_num[3], rssi_avg[4]/(int)info->rcv_num[4], rssi_avg[5]/(int)info->rcv_num[5], rssi_avg[6]/(int)info->rcv_num[6], rssi_avg[7]/(int)info->rcv_num[7], rssi_avg[8]/(int)info->rcv_num[8], rssi_avg[9]/(int)info->rcv_num[9], rssi_avg[10]/(int)info->rcv_num[10], rssi_avg[11]/(int)info->rcv_num[11] );
+		printk(KERN_INFO "internal 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) rssi_mcs: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11], rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]);
 		
 		dev_queue_xmit(rpt);
 	}
