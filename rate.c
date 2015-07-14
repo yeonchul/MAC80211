@@ -650,7 +650,6 @@ void ieee80211_get_tx_rates(struct ieee80211_vif *vif,
 	if (ieee80211_is_data(hdr->frame_control))
 		rate_control_apply_mask(sdata, sta, sband, info, dest, max_rates);
 
-	if (dest[0].idx < 0)
 		__rate_control_send_low(&sdata->local->hw, sband, sta, info,
 					sdata->rc_rateidx_mask[info->band]);
 
@@ -684,10 +683,10 @@ void rate_control_get_rate(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	ref->ops->get_rate(ref->priv, ista, priv_sta, txrc);
-
+	
 	if (sdata->local->hw.flags & IEEE80211_HW_SUPPORTS_RC_TABLE)
 		return;
-
+	
 	ieee80211_get_tx_rates(&sdata->vif, ista, txrc->skb,
 			       info->control.rates,
 			       ARRAY_SIZE(info->control.rates));

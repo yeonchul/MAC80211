@@ -723,8 +723,11 @@ ieee80211_tx_h_rate_ctrl(struct ieee80211_tx_data *tx)
 	 * If we're associated with the sta at this point we know we can at
 	 * least send the frame at the lowest bit rate.
 	 */
-	rate_control_get_rate(tx->sdata, tx->sta, &txrc);
+	
 
+	if(!is_multicast_ether_addr(hdr->addr1))	
+		rate_control_get_rate(tx->sdata, tx->sta, &txrc);
+	
 	if (tx->sta && !info->control.skip_table)
 		ratetbl = rcu_dereference(tx->sta->sta.rates);
 
@@ -2011,6 +2014,7 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_sub_if_data *ap_sdata;
 	enum ieee80211_band band;
 	int ret;
+	s8 pre_id = 0;
 
 	if (IS_ERR(sta))
 		sta = NULL;
@@ -2246,7 +2250,10 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 		ret = -EPERM;
 		goto free;
 	}
-
+	
+	info = IEEE80211_SKB_CB(skb);
+	pre_id = info->control.rates[0].idx;
+	
 	if (unlikely(!multicast && skb->sk &&
 		     skb_shinfo(skb)->tx_flags & SKBTX_WIFI_STATUS)) {
 		struct sk_buff *ack_skb = skb_clone_sk(skb);
@@ -2376,10 +2383,13 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 
 	info = IEEE80211_SKB_CB(skb);
 	memset(info, 0, sizeof(*info));
+	
 
 	info->flags = info_flags;
 	info->ack_frame_id = info_id;
 	info->band = band;
+	
+	info->control.rates[0].idx = pre_id;
 
 	return skb;
  free:
