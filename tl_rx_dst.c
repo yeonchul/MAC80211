@@ -152,9 +152,9 @@ static void tl_rx_tf1_timer_func(unsigned long data){
 				
 					
 
-		printk(KERN_INFO "RSSIs (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]); 
-		printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
-		printk(KERN_INFO "internal 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) rssi_mcs: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11], rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]);
+		//printk(KERN_INFO "RSSIs (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]); 
+		//printk(KERN_INFO "send 1-hop training report \n rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) \n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11]);
+		printk(KERN_INFO "internal 1-hop training report rssi = %d, batt = %d rcv: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) rssi_mcs: (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)\n", info->rssi, info->batt, info->rcv_num[0], info->rcv_num[1], info->rcv_num[2], info->rcv_num[3], info->rcv_num[4], info->rcv_num[5], info->rcv_num[6], info->rcv_num[7], info->rcv_num[8], info->rcv_num[9], info->rcv_num[10], info->rcv_num[11], rssi_avg[0], rssi_avg[1], rssi_avg[2], rssi_avg[3], rssi_avg[4], rssi_avg[5], rssi_avg[6], rssi_avg[7], rssi_avg[8], rssi_avg[9], rssi_avg[10], rssi_avg[11]);
 		
 		dev_queue_xmit(rpt);
 	}
