@@ -12,6 +12,7 @@
 #define TF_SIZE 1370
 #define SNDTF_SIZE 19
 #define SETRELAY_SIZE 17
+#define TFREQ_SIZE 15
 
 #define MNPRELAY 0
 
@@ -31,6 +32,10 @@ enum tr_type {
 	SendTF 		= 5,
 	NbrRPT		= 6,
 	SetRelay	= 7,
+	TF_REQ		= 8,
+	TF_RPT		= 9,
+	BLOCK_NACK	= 10,
+	U_FB		= 11,
 };
 
 struct batt_info

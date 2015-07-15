@@ -25,6 +25,7 @@ static struct net_device * dev_send2;
 static struct batt_info batt_i;
 static int rssi_avg[NUM_MCS] = {0};
 
+
 static void tl_rx_tr2_timer_func(unsigned long data){
 	struct tr_info_list *list = (struct tr_info_list *) data;
 	unsigned int qlen;	
@@ -223,7 +224,6 @@ static void tl_rx_tf2_timer_func(unsigned long data){
 }
 void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 	static struct tr_info_list tr2_list;
-
 	enum tr_type skb_type = skb->data[0];
 
 	unsigned char *skb_daddr = skb_mac_header(skb);
@@ -358,8 +358,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				tr_set_param(false, false, 10, 0, 0, 0, 0);
 				printk("Receive first TypeTwoTf, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 				
-				tr_info_free(tf1_info);
-				tf1_info = NULL;
+				//tr_info_free(tf1_info);
+				//tf1_info = NULL;
 				
 				memcpy(tf2_info->addr, skb_saddr, ETH_ALEN);
 				tf2_info->dev = skb->dev;
@@ -371,7 +371,6 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				tf2_cur_index = tf2_index;
 			}
 		}
-
 	}
 
 	else if(skb_type == TypeTwoTR){
@@ -438,6 +437,69 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			tr_set_param(false, false, skb_k, skb_n, 0, 0, 0);
 			printk("Receive SetRelay, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 			printk("I AM RELAY, n = %d\n", skb_n);
+		}
+	}
+	else if(skb_type == TF_REQ){
+		unsigned int size;
+		struct tr_info_list *list = &tr2_list;
+
+		if(list == NULL){
+			struct sk_buff *rpt; 
+			size = ETHERHEADLEN + 4;
+			rpt=tl_alloc_skb(dev_send2, skb_saddr, dev_send2->dev_addr, size, TF_RPT);
+			
+			printk("NULL list\n");
+			printk("Receive TF_REQ Message (%d) from [%x:%x:%x:%x:%x:%x]\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+			
+			if(rpt != NULL){
+				rpt->data[ETHERHEADLEN + 1] = tf1_info->rssi;
+				rpt->data[ETHERHEADLEN + 2] = tf1_info->batt;
+				rpt->data[ETHERHEADLEN + 3] = 0;
+			
+				printk("Send TF_RPT Message\n");
+				dev_queue_xmit(rpt);
+			} 
+			else{
+				printk("Fail to alloc skb\n");
+			}
+		}
+		else{
+			unsigned char qlen = list->qlen;	
+			struct tr_info *info = list->next;
+			int i=0;
+	
+			size = ETHERHEADLEN + 4 + ((ETH_ALEN + 2) * qlen);
+
+			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
+				struct sk_buff *rpt = tl_alloc_skb(dev_send2, skb_saddr, dev_send2->dev_addr, size, TF_RPT);
+				printk("Receive TF_REQ Message (%d) from [%x:%x:%x:%x:%x:%x]\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+				if(rpt != NULL){
+					rpt->data[ETHERHEADLEN + 1] = tf1_info->rssi;
+					rpt->data[ETHERHEADLEN + 2] = tf1_info->batt;
+					rpt->data[ETHERHEADLEN + 3] = qlen; //may incur a bug
+					printk("Send TF_RPT Message\n");
+					for(i = 0; i < qlen; i++){
+						int ii = i * (ETH_ALEN + 2);
+						printk("Node %d Addr = %x:%x:%x:%x:%x:%x, rssi = %x batt = %x\n", i, info->addr[0], info->addr[1], info->addr[2], info->addr[3], info->addr[4], info->addr[5], info->rssi, info->batt);
+						memcpy(&(rpt->data[ETHERHEADLEN + 4 + ii]), info->addr, ETH_ALEN);
+						rpt->data[ETHERHEADLEN + 4 + ii + ETH_ALEN] = info->rssi; 
+						rpt->data[ETHERHEADLEN + 4 + ii + ETH_ALEN + 1] = info->batt; 
+						
+						tr_info_free(info);
+						info = list->next;
+
+						if(info == NULL){
+							printk("Empty info\n");
+							break;
+						}
+					}
+					
+					dev_queue_xmit(rpt);
+				}
+				else{
+					printk("Fail in tl_alloc_skb!!\n");
+				}
+			}		
 		}
 	}
 	else{
