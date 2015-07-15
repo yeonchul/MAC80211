@@ -69,6 +69,7 @@ bool tl_start_check(struct sk_buff *skb){
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 
 		tl_mcs_send_timer_func(0);
+
 	}
 	return true;
 }
@@ -369,10 +370,66 @@ void tl_receive_skb_src(struct sk_buff *skb){
 			}
 		}// daddr
 	}
+	else if(skb_type == TF_RPT){
+			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
+					struct tr_info *sa_info = tr_info_find_addr(&src_nbr_list, skb_saddr);
+					if(sa_info != NULL){
+							struct tr_info_list *nbr_2hop_list = &(sa_info->nbr_list);
+							char rssi = skb->data[1];
+							unsigned char batt = skb->data[2];
+							//unsigned int skb_k = skb->data[1];
+							unsigned char num_nbr = skb->data[3];
+							unsigned char i;
+
+							printk("Receive TF_RPT Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+							sa_info->rssi = rssi;
+							sa_info->batt = batt;										
+			
+							for(i = 0; i < num_nbr; i++){
+								struct tr_info *info;
+								int ii = i * (ETH_ALEN + 2);
+								int j=0;
+								unsigned char *nbr_addr = &(skb->data[ii + 4]);
+								rssi = skb->data[ii+ 4 + ETH_ALEN];
+								batt = skb->data[ii+ 5 + ETH_ALEN];
+								
+								//unsigned char skb_n = skb->data[ii + 6 + ETH_ALEN];
+								printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt);
+								// Initialize
+								if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
+									unsigned int rcv[NUM_MCS]={0};
+									info = tr_info_create(nbr_addr, skb->dev, 0, rcv, rssi, batt);
+									tr_info_insert(info, nbr_2hop_list);
+								}
+								else{
+									info->rssi = rssi;
+									info->batt = batt;
+									info->dev = skb->dev;
+								}
+							}
+							//tr_info_list_print(&src_nbr_list);
+					}
+					else{
+						printk("%x:%x:%x:%x:%x:%x don't exist in src_nbr_list", skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+					}
+		}// daddr
+	}
 	else{
 		//printk(KERN_INFO "other types\n");
 	}
 	//netif_receive_skb(skb);	
 	dev_kfree_skb(skb);
 }
+
+//Runtime functions
+
+void send_tfreq(char *addr)
+{
+	struct sk_buff *otf = tl_alloc_skb(dev_send, addr, dev_send->dev_addr, TF_SIZE, TF_REQ);
+	if(otf!=NULL)
+		dev_queue_xmit(otf);
+}
+
+
+
 
