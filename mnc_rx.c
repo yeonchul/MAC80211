@@ -10,7 +10,14 @@
 
 #define ETIMEOUT 125 // 500msec
 #define DTIMEOUT 125 // 500msec
+#define BNACK_TIMEOUT 500 // 500msec
 #define ETHERLEN 14
+#define IS_RUN 0
+
+static struct timer_list bnack_timer;
+static void bnack_func(unsigned long data);
+static unsigned char * last_addr = NULL;
+static unsigned long last_time = 0;
 
 //static unsigned int out_of_order = 0;
 
@@ -45,6 +52,8 @@ void decoding_try(struct sk_buff *skb, char rssi)
 	static unsigned char last_did[3] = {0, 0, 0};
 	unsigned char j;
 	struct net_device *rdev = skb->dev;
+	bool bnack_trigger = true;
+	static bool runtime = false;
 
 	mh_pos = skb_mac_header(skb) - skb->head;
 	ethertype = (skb->head[mh_pos+12]<<8) | skb->head[mh_pos+13];
@@ -57,6 +66,18 @@ void decoding_try(struct sk_buff *skb, char rssi)
 //		printk(KERN_INFO "Decode packet! ethertype: %x\n", ethertype);
 		//dev_kfree_skb(skb);
 		skb_linearize(skb);
+		
+		if(runtime){
+			if(!tr_get_src()){
+				update_rssi(skb, rssi);
+			}
+			if(rssi > -80){
+				unsigned char * saddr = skb_mac_header(skb) + ETH_ALEN;
+				memcpy(last_addr, saddr, ETH_ALEN);
+				last_time = jiffies; 
+			}
+		}
+		
 		if(tr_get_src()) tl_receive_skb_src(skb);
 		else tl_receive_skb_dst(skb, rssi);
 		return;
@@ -64,16 +85,33 @@ void decoding_try(struct sk_buff *skb, char rssi)
 	else{
 //		printk("Decoding?\n");
 //		netif_receive_skb(skb);
-		
 		skb->head[mh_pos+12]=0x08;
 		skb->head[mh_pos+13]=0x00;
 		skb->protocol = 0x0008;
 
 		skb_linearize(skb);
+	
+		if(!tr_get_src()){
+			update_rssi(skb, rssi);
+		}
+		if(rssi > -80){
+			unsigned char * saddr = skb_mac_header(skb)+6;
+			memcpy(last_addr, saddr, ETH_ALEN);
+			last_time = jiffies; 
+		}
+	
 
 		if(i == 0){
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
+
+			if(IS_RUN){
+				init_runtime();
+				runtime = true;
+			}
+
+			setup_timer(&bnack_timer, &bnack_func, 0);
+			mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
 			i = 1;
 		}
 
@@ -85,6 +123,8 @@ void decoding_try(struct sk_buff *skb, char rssi)
 
 		mnc_queue_head_check_etime(&list, cjiffies);
 
+		//ycshin: should be modified
+			
 		//	printk(KERN_INFO "last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_did[0], last_did[1], last_did[2]);
 
 		for(j = 0; j < 3; j++){
@@ -93,6 +133,18 @@ void decoding_try(struct sk_buff *skb, char rssi)
 				kfree_skb(skb);
 				return;
 			}
+		
+			if(!(eid > last_did[j]+2 && last_did[j] < 254 && last_did[j]!=0)){
+				bnack_trigger = false;		
+			}
+		}
+
+		if(bnack_trigger == true){
+			unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
+			if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
+				send_bnack(last_addr);
+			else
+				send_bnack(mcast_addr);
 		}
 
 		mncq = mnc_queue_head_find_eid(&list, eid);
@@ -147,6 +199,7 @@ void decoding_try(struct sk_buff *skb, char rssi)
 					mnc_queue_free(mncq);
 					//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
 					// printk(KERN_INFO "Free success!\n");
+					mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
 				}
 				else{
 					// printk(KERN_INFO "Decoding fail! eid: %x\n", eid);
@@ -538,4 +591,14 @@ void print_matrix(int m, int n, unsigned char M[][n]){
 		}
 		printk(KERN_INFO "\n");
 	}
+}
+
+static void bnack_func(unsigned long data){
+	unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
+	
+	printk("Send BNACK\n");
+	if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
+		send_bnack(last_addr);
+	else
+		send_bnack(mcast_addr);
 }

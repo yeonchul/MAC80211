@@ -63,7 +63,7 @@ bool tl_start_check(struct sk_buff *skb){
 
 	else{
 		dev_send = skb->dev;
-		tr_set_param(true, data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5]);
+		tr_set_param(true, data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5], 0, 0);
 		tr_info_list_purge(&src_nbr_list);
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());

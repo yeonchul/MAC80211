@@ -13,6 +13,7 @@
 #define SNDTF_SIZE 19
 #define SETRELAY_SIZE 17
 #define TFREQ_SIZE 15
+#define BNACK_SIZE 15
 
 #define MNPRELAY 0
 
@@ -20,9 +21,14 @@
 #define NUM_MCS 12
 
 #define WLAN_MODE 0 //0: 11g, 1: 11a
+#define FB_PERIOD 100 // in millisecond
 
 void tl_receive_skb_src(struct sk_buff *skb);
 void tl_receive_skb_dst(struct sk_buff *skb, char rssi);
+void init_runtime(void);
+void update_rssi(struct sk_buff *skb, char rssi);
+void send_bnack(unsigned char *dest_addr);
+
 
 enum tr_type {
 	TypeOneTF 	= 1,
@@ -51,7 +57,9 @@ struct tr_param{
 	unsigned char data_n;
 	unsigned int tf_k;
 	unsigned int tf_thre;
-	unsigned char max_relay_n; 
+	unsigned char max_relay_n;
+	unsigned char mcs;
+	unsigned int offset; 
 };
 
 struct tr_info_list{
@@ -137,7 +145,7 @@ void dst_info_free(struct dst_info *info);
 void dst_info_insert(struct dst_info *newinfo, struct dst_info_list *list);
 struct dst_info *dst_info_find_addr(struct dst_info_list *list, unsigned char addr[]);
 
-void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n);
+void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n, unsigned char mcs, unsigned int offset);
 bool tr_get_src(void);
 bool tr_get_sys(void);
 unsigned char tr_get_data_k(void);
@@ -145,6 +153,8 @@ unsigned char tr_get_data_n(void);
 unsigned int tr_get_tf_k(void);
 unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
+unsigned char tr_get_mcs(void);
+unsigned int tr_get_offset(void);
 void trinfo_print(struct tr_info *info);
 unsigned int get_tot_rcv(struct tr_info* info);
 
