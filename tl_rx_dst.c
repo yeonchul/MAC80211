@@ -260,9 +260,6 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 
 		printk("Initialization Destination Module\n");
 	}
-	
-	if(skb_type != TypeOneTF)
-		return;	
 
 
 	if(skb_type == TypeOneTF){
@@ -271,23 +268,10 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 		unsigned int tf1_seq = (unsigned int) skb->data[5] << 24 | skb->data[6] << 16 | skb->data[7] << 8 | skb->data[8];
 		unsigned int tf1_index = (unsigned int) skb->data[9] << 24 | skb->data[10] << 16 | skb->data[11] << 8 | skb->data[12];
 		unsigned char mcs = (unsigned char) skb->data[13];
-		struct tr_info *info;
 		
 		printk(KERN_INFO "skb type: TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
 		//
 		
-		memcpy(tf1_addr, skb_saddr, ETH_ALEN);
-		// Initialize
-		if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
-			unsigned int rcv[NUM_MCS];
-			memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-			memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
-			info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt_i.m_capacity);
-			printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
-			tr_info_insert(info, rcv_list);
-		}
-			// Initialize
-		return;
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
 			dev_kfree_skb(skb);
@@ -298,15 +282,18 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			printk("ERROR, tf1_k is lower than tf1_seq\n");
 		}
 		else{
+			struct tr_info * info;
 			//struct tr_info *info;
 			memcpy(tf1_addr, skb_saddr, ETH_ALEN);
 			// Initialize
 			if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
 				unsigned int rcv[NUM_MCS];
+				unsigned char batt=0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
-				info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt_i.m_capacity);
+				batt= set_batt(batt_i.m_status, batt_i.m_capacity);
+				info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
 				(info->rcv_num[mcs])++;
 				info->rssi = rssi;
@@ -360,10 +347,12 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			/// Initialize
 			if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
 				unsigned int rcv[NUM_MCS];
+				unsigned char batt=0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
-				info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, rssi, batt_i.m_capacity);
+				batt = set_batt(batt_i.m_status, batt_i.m_capacity);
+				info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, rssi, batt);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf2_k, tf2_seq, tf2_index, mcs);
 				(info->rcv_num[mcs])++;
 				info->rssi = rssi;
@@ -443,7 +432,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				sdf_info = tr_info_create(skb_saddr, skb->dev, skb_k, rcv, 0, 0);
 				printk("Send TypeTwoTF Message(%d); k = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", TypeTwoTF, skb_k, skb->dev->dev_addr[0], skb->dev->dev_addr[1], skb->dev->dev_addr[2], skb->dev->dev_addr[3], skb->dev->dev_addr[4], skb->dev->dev_addr[5], multicast_addr[0], multicast_addr[1], multicast_addr[2], multicast_addr[3], multicast_addr[4], multicast_addr[5]);
 			
-		//		tl_2hop_mcs_send_timer_func(0);
+				tl_2hop_mcs_send_timer_func(0);
 			}
 			else{
 				printk("Receive duplicate SendTF\n");
@@ -506,7 +495,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			
 			if(rpt != NULL){
 				rpt->data[ETHERHEADLEN + 1] = rssi;
-				rpt->data[ETHERHEADLEN + 2] = batt_i.m_capacity;
+				rpt->data[ETHERHEADLEN + 2] = set_batt(batt_i.m_status, batt_i.m_capacity);
 				rpt->data[ETHERHEADLEN + 3] = 0;
 			
 				printk("Send TF_RPT Message\n");
@@ -524,7 +513,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 
 			if(rpt!=NULL){
 				unsigned int i = 0;
-				rpt->data[ETHERHEADLEN + 1] = batt_i.m_capacity;
+				rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
 				rpt->data[ETHERHEADLEN + 2] = len;
 
 				for (i=0; i < len; i++){
@@ -538,7 +527,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 						break;
 					}	
 				}	
-				printk("Send TF PRT(%d) with batt %d\n", TF_RPT, batt_i.m_capacity);
+				printk("Send TF PRT(%d) with charge %d capa %d\n", TF_RPT, batt_i.m_status, batt_i.m_capacity);
 				dev_queue_xmit(rpt);
 			}
 			else{
@@ -672,7 +661,7 @@ void update_rssi(struct sk_buff *skb, char rssi){
 		if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
 			unsigned int rcv[NUM_MCS];
 			memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-			info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, batt_i.m_capacity);
+			info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, set_batt(batt_i.m_status, batt_i.m_capacity));
 			tr_info_insert(info, rcv_list);
 		}
 		else{
@@ -698,7 +687,7 @@ static void tl_periodic_feedback(unsigned long data){
 		struct sk_buff *rpt = tl_alloc_skb(dev_send2, parent_addr, dev_send2->dev_addr, size, U_FB); 
 		if(rpt!=NULL){
 			unsigned int i = 0;
-			rpt->data[ETHERHEADLEN + 1] = batt_i.m_capacity;
+			rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
 			rpt->data[ETHERHEADLEN + 2] = len;
 
 			for (i=0; i < len; i++){
@@ -712,7 +701,7 @@ static void tl_periodic_feedback(unsigned long data){
 					break;
 				}	
 			}	
-			printk("Send Periodic Feedback(%d), parent = %x:%x:%x:%x:%x:%x with batt %d\n", U_FB, parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5], batt_i.m_capacity);
+			printk("Send Periodic Feedback(%d), parent = %x:%x:%x:%x:%x:%x with charge %d batt %d\n", U_FB, parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5], batt_i.m_status, batt_i.m_capacity);
 			dev_queue_xmit(rpt);
 		}		
 	}
@@ -735,7 +724,7 @@ void send_bnack(unsigned char * dest_addr){
 		printk("Empty or zero rcv list : SEND NULL BNACK\n");
 		rpt = tl_alloc_skb(dev_send2, dest_addr, dev_send2->dev_addr, size, BLOCK_NACK);
 		if(rpt!=NULL){
-			rpt->data[ETHERHEADLEN + 1] = batt_i.m_capacity;
+			rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
 			rpt->data[ETHERHEADLEN + 2] = 0;
 			dev_queue_xmit(rpt);
 		}
@@ -747,7 +736,7 @@ void send_bnack(unsigned char * dest_addr){
 		rpt = tl_alloc_skb(dev_send2, dest_addr, dev_send2->dev_addr, size, BLOCK_NACK); 
 		if(rpt!=NULL){
 			unsigned int i = 0;
-			rpt->data[ETHERHEADLEN + 1] = batt_i.m_capacity;
+			rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
 			rpt->data[ETHERHEADLEN + 2] = len;
 
 			for (i=0; i < len; i++){
@@ -777,4 +766,5 @@ void init_runtime(void){
 		run_init = true;
 	}
 }
+
 

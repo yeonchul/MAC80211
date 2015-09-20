@@ -157,5 +157,7 @@ unsigned char tr_get_mcs(void);
 unsigned int tr_get_offset(void);
 void trinfo_print(struct tr_info *info);
 unsigned int get_tot_rcv(struct tr_info* info);
-
+unsigned char set_batt(unsigned char status, unsigned char capacity);
+unsigned char get_capa(unsigned char batt);
+unsigned char get_charge(unsigned char batt);
 #endif
