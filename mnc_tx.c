@@ -14,7 +14,7 @@
 //#define ETHERLEN 14	// Header length in sk_buff data field
 //#define K 10		// The number of original packets to encode
 //#define N 20		// The number of created packets
-#define P 2		// Matrix network coding coefficient size
+#define P 2	// Matrix network coding coefficient size
 #define TIMEOUT 0x100
 //#define SYSTEMATIC 0	// 0 : Non-systematic code, 1 : Systematic code 
 
@@ -36,7 +36,7 @@ netdev_tx_t ieee80211_matrix_network_coding(struct sk_buff *skb, struct net_devi
 	udp_pos = skb_transport_header(skb) - skb->data;
 	portnum = (skb->data[udp_pos+2] << 8)|skb->data[udp_pos+3];
 
-	if((portnum != 5555) && (portnum != 5550) && (portnum!=9997) ) return ieee80211_subif_start_xmit(skb, dev);
+	if((portnum != 5555) && (portnum != 5550)) return ieee80211_subif_start_xmit(skb, dev);
 
 	else if(portnum == 5550){
 		if(tl_start_check(skb)){
@@ -47,15 +47,6 @@ netdev_tx_t ieee80211_matrix_network_coding(struct sk_buff *skb, struct net_devi
 			return ieee80211_subif_start_xmit(skb, dev);
 		}
 
-	}
-	else if (portnum == 9997){
-		if(set_batt_info(skb)){
-			kfree_skb(skb);
-			return NETDEV_TX_OK;	
-		}
-		else{
-			return ieee80211_subif_start_xmit(skb, dev);
-		}
 	}
 
 	else{
@@ -378,10 +369,13 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 	}
 
 	if(tr_get_src()){
+		if (eid % 10 == 0)
+			printk("Send Batch ID: %d\n", eid);
+			
 		eid++;
 		if(eid == 0) eid++;
+		
 	}
-	
 	
 	return ret;
 }

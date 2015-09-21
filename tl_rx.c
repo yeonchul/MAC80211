@@ -27,23 +27,3 @@ unsigned int get_tot_rcv(struct tr_info* info){
 	}
 	return ret;
 }
-
-unsigned char set_batt(unsigned char status, unsigned char capacity){
-	return (status << 7)|capacity;
-}
-
-unsigned char get_capa(unsigned char batt)
-{
-	return batt & 0x7f;
-}
-
-unsigned char get_charge(unsigned char batt)
-{
-	unsigned char ret = 0;
-	ret = (batt & (1<<7))>>7; 
-	
-	if (ret <= 1)
-		return ret;
-	else
-		return 0;
-}

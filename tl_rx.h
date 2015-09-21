@@ -8,12 +8,11 @@
 #include <linux/time.h>
 #include <linux/netdevice.h>
 
-#define TR_SIZE 65  // should be NUM_MCS*4+1+14+2
+#define TR_SIZE 65 // 14+1+2+4*NUM_MCS
 #define TF_SIZE 1370
 #define SNDTF_SIZE 19
 #define SETRELAY_SIZE 17
 #define TFREQ_SIZE 15
-#define BNACK_SIZE 15
 
 #define MNPRELAY 0
 
@@ -21,14 +20,9 @@
 #define NUM_MCS 12
 
 #define WLAN_MODE 0 //0: 11g, 1: 11a
-#define FB_PERIOD 100 // in millisecond
 
 void tl_receive_skb_src(struct sk_buff *skb);
-void tl_receive_skb_dst(struct sk_buff *skb, char rssi);
-void init_runtime(void);
-void update_rssi(struct sk_buff *skb, char rssi);
-void send_bnack(unsigned char *dest_addr);
-
+void tl_receive_skb_dst(struct sk_buff *skb);
 
 enum tr_type {
 	TypeOneTF 	= 1,
@@ -44,11 +38,7 @@ enum tr_type {
 	U_FB		= 11,
 };
 
-struct batt_info
-{
-	char m_status;
-	char m_capacity;
-};
+
 
 struct tr_param{
 	bool src;
@@ -57,9 +47,7 @@ struct tr_param{
 	unsigned char data_n;
 	unsigned int tf_k;
 	unsigned int tf_thre;
-	unsigned char max_relay_n;
-	unsigned char mcs;
-	unsigned int offset; 
+	unsigned char max_relay_n; 
 };
 
 struct tr_info_list{
@@ -125,7 +113,6 @@ unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len)
 };
 */
 bool tl_start_check(struct sk_buff *skb);
-bool set_batt_info(struct sk_buff *skb);
 void tl_start_time(void);
 struct sk_buff *tl_alloc_skb(struct net_device *dev, unsigned char daddr[], unsigned char saddr[], unsigned int size, enum tr_type type);
 void tl_select_relay(struct tr_info_list *list);
@@ -145,7 +132,7 @@ void dst_info_free(struct dst_info *info);
 void dst_info_insert(struct dst_info *newinfo, struct dst_info_list *list);
 struct dst_info *dst_info_find_addr(struct dst_info_list *list, unsigned char addr[]);
 
-void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n, unsigned char mcs, unsigned int offset);
+void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n);
 bool tr_get_src(void);
 bool tr_get_sys(void);
 unsigned char tr_get_data_k(void);
@@ -153,11 +140,7 @@ unsigned char tr_get_data_n(void);
 unsigned int tr_get_tf_k(void);
 unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
-unsigned char tr_get_mcs(void);
-unsigned int tr_get_offset(void);
 void trinfo_print(struct tr_info *info);
 unsigned int get_tot_rcv(struct tr_info* info);
-unsigned char set_batt(unsigned char status, unsigned char capacity);
-unsigned char get_capa(unsigned char batt);
-unsigned char get_charge(unsigned char batt);
+
 #endif

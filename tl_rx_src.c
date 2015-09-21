@@ -63,25 +63,28 @@ bool tl_start_check(struct sk_buff *skb){
 
 	else{
 		dev_send = skb->dev;
-		tr_set_param(true, data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5], 0, 0);
+		tr_set_param(true, data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5]);
 		tr_info_list_purge(&src_nbr_list);
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 
 		tl_mcs_send_timer_func(0);
+
 	}
 	return true;
 }
+
+
 
 void tr_info_list_print(struct tr_info_list *list){
 	struct tr_info *test_info = list->next;
 	printk("-------------------------src_nbr_list status---------------------------\n");
 	while(test_info != NULL){
 		struct tr_info *test_src_nbr_info = (&(test_info->nbr_list))->next;
-		printk(KERN_INFO "1hop %x:%x:%x:%x:%x:%x, rssi %x, batt %x, (%d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->rssi, test_info->batt, test_info->rcv_num[0], test_info->rcv_num[1], test_info->rcv_num[2], test_info->rcv_num[3], test_info->rcv_num[4], test_info->rcv_num[5], test_info->rcv_num[6], test_info->rcv_num[7],test_info->total_num, test_info->tf_cnt, test_info->nr_cnt);
+		printk(KERN_INFO "1hop %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->rssi, test_info->batt, test_info->rcv_num[0], test_info->rcv_num[1], test_info->rcv_num[2], test_info->rcv_num[3], test_info->rcv_num[4], test_info->rcv_num[5], test_info->rcv_num[6], test_info->rcv_num[7],  test_info->rcv_num[8], test_info->rcv_num[9], test_info->rcv_num[10], test_info->rcv_num[11], test_info->total_num, test_info->tf_cnt, test_info->nr_cnt);
 		//printk(KERN_INFO "1-hop addr: %x:%x:%x:%x:%x:%x, total_num = %d, rcv_num = %d, tf_cnt = %d, nr_cnt = %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->total_num, test_info->rcv_num, test_info->tf_cnt, test_info->nr_cnt);
 		while(test_src_nbr_info != NULL){
-			printk(KERN_INFO "---> %x:%x:%x:%x:%x:%x, rssi %x, batt %x, (%d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_src_nbr_info->addr[0], test_src_nbr_info->addr[1], test_src_nbr_info->addr[2], test_src_nbr_info->addr[3], test_src_nbr_info->addr[4], test_src_nbr_info->addr[5], test_src_nbr_info->rssi, test_src_nbr_info->batt, test_src_nbr_info->rcv_num[0], test_src_nbr_info->rcv_num[1], test_src_nbr_info->rcv_num[2], test_src_nbr_info->rcv_num[3], test_src_nbr_info->rcv_num[4], test_src_nbr_info->rcv_num[5], test_src_nbr_info->rcv_num[6], test_src_nbr_info->rcv_num[7],test_src_nbr_info->total_num, test_src_nbr_info->tf_cnt, test_src_nbr_info->nr_cnt);
+			printk(KERN_INFO "---> %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_src_nbr_info->addr[0], test_src_nbr_info->addr[1], test_src_nbr_info->addr[2], test_src_nbr_info->addr[3], test_src_nbr_info->addr[4], test_src_nbr_info->addr[5], test_src_nbr_info->rssi, test_src_nbr_info->batt, test_src_nbr_info->rcv_num[0], test_src_nbr_info->rcv_num[1], test_src_nbr_info->rcv_num[2], test_src_nbr_info->rcv_num[3], test_src_nbr_info->rcv_num[4], test_src_nbr_info->rcv_num[5], test_src_nbr_info->rcv_num[6], test_src_nbr_info->rcv_num[7], test_src_nbr_info->rcv_num[8], test_src_nbr_info->rcv_num[9], test_src_nbr_info->rcv_num[10], test_src_nbr_info->rcv_num[11], test_src_nbr_info->total_num, test_src_nbr_info->tf_cnt, test_src_nbr_info->nr_cnt);
 			test_src_nbr_info = test_src_nbr_info->next;
 		}
 		test_info = test_info->next;
@@ -209,7 +212,7 @@ static void tl_rx_tr1_timer_func(unsigned long data){
 					info->nr_cnt = false;
 
 					setup_timer(&tl_rx_sndtf_timer, &tl_rx_sndtf_timer_func, (unsigned long) info);
-					mod_timer(&tl_rx_sndtf_timer, jiffies + 3*HZ);
+					mod_timer(&tl_rx_sndtf_timer, jiffies + 10*HZ);
 					
 					tr_info_list_print(&src_nbr_list);
 					return;
@@ -259,7 +262,7 @@ void tl_receive_skb_src(struct sk_buff *skb){
 				struct tr_info *info;
 				unsigned int n_rcv[NUM_MCS];
 				int i=0;
-				unsigned char rssi = (unsigned char) skb->data[1];
+				char rssi = (char) skb->data[1];
 				unsigned char batt = (unsigned char) skb->data[2];
 				
 				memset(n_rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
@@ -268,7 +271,7 @@ void tl_receive_skb_src(struct sk_buff *skb){
 					n_rcv[i] = (unsigned int) skb->data[3+4*i] << 24 | skb->data[4+4*i] << 16 | skb->data[5+4*i] << 8 | skb->data[6+4*i];	
 				}
 
-				printk("Receive TypeOneTR Message(%d); rssi = %x, batt = %x, rcv0 = %d, rcv1 = %d, rcv2 = %d, rcv3 = %d, rcv4 = %d, rcv5 = %d, rcv6 = %d, rcv7 = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, rssi, batt, n_rcv[0],  n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7], skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+				printk("Receive TypeOneTR Message(%d); rssi = %d, batt = %d, rcv0 = %d, rcv1 = %d, rcv2 = %d, rcv3 = %d, rcv4 = %d, rcv5 = %d, rcv6 = %d, rcv7 = %d, rcv8 = %d, rcv9 = %d, rcv10 = %d, rcv11 = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, rssi, batt, n_rcv[0],  n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7], n_rcv[8], n_rcv[9], n_rcv[10], n_rcv[11],skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
 				
 				// Initialize
 				if((info = tr_info_find_addr(&src_nbr_list, skb_saddr)) == NULL){
@@ -286,7 +289,8 @@ void tl_receive_skb_src(struct sk_buff *skb){
 					tr_info_list_purge(&(info->nbr_list));
 				}
 				//if(skb_n > (tr_get_tf_k()/10)*8) mod_timer(&tl_rx_tr1_timer, jiffies + 70);
-				mod_timer(&tl_rx_tr1_timer, jiffies + HZ/5);
+				
+				mod_timer(&tl_rx_tr1_timer, jiffies + 2*HZ); //should disable comment
 				tr_info_list_print(&src_nbr_list);
 			}
 			else{
@@ -318,14 +322,14 @@ void tl_receive_skb_src(struct sk_buff *skb){
 								int ii = i * (ETH_ALEN + 2 + 4*NUM_MCS);
 								int j=0;
 								unsigned char *nbr_addr = &(skb->data[ii + 6]);
-								unsigned char rssi = skb->data[ii+7];
-								unsigned char batt = skb->data[ii+8];
+								char rssi = skb->data[ii+ 6 + ETH_ALEN];
+								unsigned char batt = skb->data[ii+ 6+ ETH_ALEN+1];
 								unsigned int n_rcv[NUM_MCS];
 								for (j=0; j < NUM_MCS; j++){
 									n_rcv[j] = (unsigned int) skb->data[ii + 6 + ETH_ALEN + 2 + 4*j ] << 24 | skb->data[ii + 6 + ETH_ALEN + 3 + 4*j] << 16 | skb->data[ii + 6 + ETH_ALEN + 4 + 4*j] << 8 | skb->data[ii + 6 + ETH_ALEN + 5 + 4*j];
 								}
 								//unsigned char skb_n = skb->data[ii + 6 + ETH_ALEN];
-								printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %x batt = %x n0 = %d n1 = %d n2 = %d n3 = %d n4 = %d n5 = %d n6 = %d n7 = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt, n_rcv[0], n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7]);
+								printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %x batt = %x n0 = %d n1 = %d n2 = %d n3 = %d n4 = %d n5 = %d n6 = %d n7 = %d n8 = %d n9 = %d n10 = %d n11 = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt, n_rcv[0], n_rcv[1], n_rcv[2], n_rcv[3], n_rcv[4], n_rcv[5], n_rcv[6], n_rcv[7], n_rcv[8], n_rcv[9], n_rcv[10], n_rcv[11]);
 								// Initialize
 								if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
 									info = tr_info_create(nbr_addr, skb->dev, skb_k, n_rcv, rssi, batt);
@@ -366,10 +370,65 @@ void tl_receive_skb_src(struct sk_buff *skb){
 			}
 		}// daddr
 	}
+	else if(skb_type == TF_RPT){
+			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
+					struct tr_info *sa_info = tr_info_find_addr(&src_nbr_list, skb_saddr);
+					if(sa_info != NULL){
+							struct tr_info_list *nbr_2hop_list = &(sa_info->nbr_list);
+							char rssi = skb->data[1];
+							unsigned char batt = skb->data[2];
+							//unsigned int skb_k = skb->data[1];
+							unsigned char num_nbr = skb->data[3];
+							unsigned char i;
+
+							printk("Receive TF_RPT Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+							sa_info->rssi = rssi;
+							sa_info->batt = batt;										
+			
+							for(i = 0; i < num_nbr; i++){
+								struct tr_info *info;
+								int ii = i * (ETH_ALEN + 2);
+								unsigned char *nbr_addr = &(skb->data[ii + 4]);
+								rssi = skb->data[ii+ 4 + ETH_ALEN];
+								batt = skb->data[ii+ 5 + ETH_ALEN];
+								
+								//unsigned char skb_n = skb->data[ii + 6 + ETH_ALEN];
+								printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt);
+								// Initialize
+								if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
+									unsigned int rcv[NUM_MCS]={0};
+									info = tr_info_create(nbr_addr, skb->dev, 0, rcv, rssi, batt);
+									tr_info_insert(info, nbr_2hop_list);
+								}
+								else{
+									info->rssi = rssi;
+									info->batt = batt;
+									info->dev = skb->dev;
+								}
+							}
+							//tr_info_list_print(&src_nbr_list);
+					}
+					else{
+						printk("%x:%x:%x:%x:%x:%x don't exist in src_nbr_list", skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+					}
+		}// daddr
+	}
 	else{
 		//printk(KERN_INFO "other types\n");
 	}
 	//netif_receive_skb(skb);	
 	dev_kfree_skb(skb);
 }
+
+//Runtime functions
+
+void send_tfreq(char *addr)
+{
+	struct sk_buff *otf = tl_alloc_skb(dev_send, addr, dev_send->dev_addr, TF_SIZE, TF_REQ);
+	if(otf!=NULL)
+		dev_queue_xmit(otf);
+}
+
+
+
 
