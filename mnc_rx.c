@@ -16,7 +16,7 @@
 
 static struct timer_list bnack_timer;
 static void bnack_func(unsigned long data);
-static unsigned char * last_addr = NULL;
+static unsigned char last_addr[ETH_ALEN] = {0};
 static unsigned long last_time = 0;
 
 //static unsigned int out_of_order = 0;
@@ -90,7 +90,8 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		skb->protocol = 0x0008;
 
 		skb_linearize(skb);
-	
+		
+		/*	
 		if(!tr_get_src()){
 			update_rssi(skb, rssi);
 		}
@@ -99,19 +100,19 @@ void decoding_try(struct sk_buff *skb, char rssi)
 			memcpy(last_addr, saddr, ETH_ALEN);
 			last_time = jiffies; 
 		}
-	
+		*/
 
 		if(i == 0){
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
-
+			/*
 			if(IS_RUN){
 				init_runtime();
 				runtime = true;
 			}
-
-			setup_timer(&bnack_timer, &bnack_func, 0);
-			mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
+			*/
+			//setup_timer(&bnack_timer, &bnack_func, 0);
+			//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
 			i = 1;
 		}
 
@@ -133,12 +134,14 @@ void decoding_try(struct sk_buff *skb, char rssi)
 				kfree_skb(skb);
 				return;
 			}
-		
+			//ycshin
+			/*	
 			if(!(eid > last_did[j]+2 && last_did[j] < 254 && last_did[j]!=0)){
 				bnack_trigger = false;		
 			}
+			*/
 		}
-
+		/* ycshin
 		if(bnack_trigger == true){
 			unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
 			if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
@@ -146,7 +149,7 @@ void decoding_try(struct sk_buff *skb, char rssi)
 			else
 				send_bnack(mcast_addr);
 		}
-
+		*/
 		mncq = mnc_queue_head_find_eid(&list, eid);
 
 		if(mncq == NULL){
@@ -187,7 +190,7 @@ void decoding_try(struct sk_buff *skb, char rssi)
 
 				// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
 				if(skbs_decoding(&(mncq->skbs), &newskbs, kp)){
-					// printk(KERN_INFO "Decoding success! eid: %x, kp: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", eid, kp, last_did[0], last_did[1], last_did[2]);
+					printk(KERN_INFO "Decoding success! eid: %x, kp: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", eid, kp, last_did[0], last_did[1], last_did[2]);
 					if((tr_get_data_n() > 0) && (!tr_get_src())){
 						mnc_encoding_tx(&newskbs, rdev, eid);
 					}
@@ -199,7 +202,8 @@ void decoding_try(struct sk_buff *skb, char rssi)
 					mnc_queue_free(mncq);
 					//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
 					// printk(KERN_INFO "Free success!\n");
-					mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
+					//ycshin
+					//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
 				}
 				else{
 					// printk(KERN_INFO "Decoding fail! eid: %x\n", eid);
