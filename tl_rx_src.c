@@ -370,47 +370,49 @@ void tl_receive_skb_src(struct sk_buff *skb){
 			}
 		}// daddr
 	}
-	else if(skb_type == TF_RPT){
-			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
-					struct tr_info *sa_info = tr_info_find_addr(&src_nbr_list, skb_saddr);
-					if(sa_info != NULL){
-							struct tr_info_list *nbr_2hop_list = &(sa_info->nbr_list);
-							char rssi = skb->data[1];
-							unsigned char batt = skb->data[2];
-							//unsigned int skb_k = skb->data[1];
-							unsigned char num_nbr = skb->data[3];
-							unsigned char i;
+	else if(skb_type == TF_RPT || skb_type == U_FB || skb_type == BLOCK_NACK){
+		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN) || (skb_type == BLOCK_NACK && !memcmp(multicast_addr, skb_daddr, ETH_ALEN))){
+			struct tr_info *sa_info = tr_info_find_addr(&src_nbr_list, skb_saddr);
+			if(sa_info != NULL){
+				struct tr_info_list *nbr_2hop_list = &(sa_info->nbr_list);
+				unsigned char batt = skb->data[1];
+				unsigned char num_nbr = skb->data[2];
+				unsigned char i;
 
-							printk("Receive TF_RPT Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
-							sa_info->rssi = rssi;
-							sa_info->batt = batt;										
-			
-							for(i = 0; i < num_nbr; i++){
-								struct tr_info *info;
-								int ii = i * (ETH_ALEN + 2);
-								unsigned char *nbr_addr = &(skb->data[ii + 4]);
-								rssi = skb->data[ii+ 4 + ETH_ALEN];
-								batt = skb->data[ii+ 5 + ETH_ALEN];
-								
-								//unsigned char skb_n = skb->data[ii + 6 + ETH_ALEN];
-								printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt);
-								// Initialize
-								if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
-									unsigned int rcv[NUM_MCS]={0};
-									info = tr_info_create(nbr_addr, skb->dev, 0, rcv, rssi, batt);
-									tr_info_insert(info, nbr_2hop_list);
-								}
-								else{
-									info->rssi = rssi;
-									info->batt = batt;
-									info->dev = skb->dev;
-								}
-							}
-							//tr_info_list_print(&src_nbr_list);
+				sa_info->batt = batt;	
+				
+				if(skb_type == TF_RPT)
+					printk("Receive TF_RPT Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+				else if(skb_type == U_FB)
+					printk("Receive U_FB Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+				else
+					printk("Receive BLOCK_NACK Message(%d); skb_num_nbr = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, num_nbr, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+
+				for(i = 0; i < num_nbr; i++){
+					struct tr_info *info;
+					int ii = 3 + i * (ETH_ALEN + 2);
+					unsigned char *nbr_addr = &(skb->data[ii]);
+					char rssi = skb->data[ii + ETH_ALEN];
+					unsigned char batt = skb->data[ii + ETH_ALEN + 1];
+
+					// Initialize
+					if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
+						unsigned int rcv[NUM_MCS]={0};
+						info = tr_info_create(nbr_addr, skb->dev, 0, rcv, rssi, batt);
+						tr_info_insert(info, nbr_2hop_list);
 					}
 					else{
-						printk("%x:%x:%x:%x:%x:%x don't exist in src_nbr_list", skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+						info->rssi = rssi;
+						info->batt = batt;
+						info->dev = skb->dev;
 					}
+					printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt);
+				}
+				//tr_info_list_print(&src_nbr_list);
+			}
+			else{
+				printk("%x:%x:%x:%x:%x:%x don't exist in src_nbr_list", skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+			}
 		}// daddr
 	}
 	else{
