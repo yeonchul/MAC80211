@@ -33,6 +33,8 @@ static int rssi_avg[NUM_MCS] = {0};
 static struct tr_info_list *snd_list = NULL;
 static struct tr_info_list *rcv_list = NULL;
 
+static unsigned char feedback_counter = 0;
+
 static void tl_rx_tr2_timer_func(unsigned long data){
 	unsigned int qlen;	
 	unsigned int size;
@@ -282,14 +284,14 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			printk("ERROR, tf1_k is lower than tf1_seq\n");
 		}
 		else{
-			struct tr_info * info;
+			struct tr_info *info;
 			//struct tr_info *info;
 			memcpy(tf1_addr, skb_saddr, ETH_ALEN);
 			// Initialize
 			if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
 				unsigned int rcv[NUM_MCS];
-				unsigned char batt=0;
-				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
+				unsigned char batt = 0;
+				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); // may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
 				batt= set_batt(batt_i.m_status, batt_i.m_capacity);
@@ -301,6 +303,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				tr_info_insert(info, rcv_list);
 				tf1_prev_rcv_num = 1;
 				tf1_cur_index = tf1_index;
+
+				memcpy(parent_addr, skb_saddr, ETH_ALEN);
 			}
 			//else if(tf1_cur_index == tf1_index){
 			if(tf1_cur_index == tf1_index){
@@ -347,7 +351,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			/// Initialize
 			if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
 				unsigned int rcv[NUM_MCS];
-				unsigned char batt=0;
+				unsigned char batt = 0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
 				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
@@ -484,7 +488,53 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 		}
 	}
 	else if(skb_type == TF_REQ){
+		struct sk_buff *rpt; 
+		unsigned int len; 
 		unsigned int size;
+		
+		printk("Receive TF_REQ Message (%d) from [%x:%x:%x:%x:%x:%x]\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+		
+		if(rcv_list == NULL){
+			len = 0;
+			printk("NULL rcv_list\n");
+		}
+		else{
+			len = rcv_list->qlen;
+		}
+		
+		size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
+		rpt = tl_alloc_skb(dev_send2, skb_saddr, dev_send2->dev_addr, size, TF_RPT);
+
+		if(rpt != NULL){
+			unsigned int i = 0;
+			struct tr_info *info = NULL;
+			if(rcv_list != NULL)
+				info = rcv_list->next;
+
+			rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
+			rpt->data[ETHERHEADLEN + 2] = len;
+
+			for(i = 0; i < len; i++){
+				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
+
+				if(info == NULL){
+					printk("Empty info\n");
+					break;
+				}	
+
+				memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
+				rpt->data[ii+ETH_ALEN] = info->rssi;
+				rpt->data[ii+ETH_ALEN+1] = info->batt;
+				info = info->next;
+			}
+			
+			printk("Send TF_RPT(%d), skb_saddr = %x:%x:%x:%x:%x:%x with batt %d, len %d\n", TF_RPT, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], batt_i.m_capacity, len);
+			dev_queue_xmit(rpt);
+		}
+		
+
+		/**** Maybe it will be deleted *****
+
 		if(rcv_list == NULL){
 			struct sk_buff *rpt; 
 			size = ETHERHEADLEN + 4;
@@ -533,7 +583,9 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 			else{
 				printk("Fail in tl_alloc_skb!!\n");
 			}
-		}		
+		}
+		*/
+
 	}
 	else if(skb_type == TF_RPT){
 		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN) && tr_get_data_n() > 0  ){
@@ -659,13 +711,25 @@ void update_rssi(struct sk_buff *skb, char rssi){
 	else{
 		struct tr_info *info;
 		if((info = tr_info_find_addr(rcv_list, skb_saddr)) == NULL){
+			//unsigned int rcv[NUM_MCS];
+			//memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
+			//info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, set_batt(batt_i.m_status, batt_i.m_capacity));
+			//tr_info_insert(info, rcv_list);
 			unsigned int rcv[NUM_MCS];
+			unsigned char batt = 0;
 			memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
-			info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, set_batt(batt_i.m_status, batt_i.m_capacity));
+			//memset(rssi_avg, 0, sizeof(int)*NUM_MCS); //gjlee?
+			tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
+			batt = set_batt(batt_i.m_status, batt_i.m_capacity);
+			info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, batt);
+			printk("update rssi: %d; New SA = %x:%x:%x:%x:%x:%x\n", rssi, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
+			//(info->rcv_num[mcs])++; // gjlee?
+			info->rssi = rssi;
 			tr_info_insert(info, rcv_list);
 		}
 		else{
 			info->rssi = (char)((16*8*(int)rssi + (16-8)*(int)info->rssi*16)/16/16);
+			//printk("update rssi = %d, info->rssi = %d, SA = %x:%x:%x:%x:%x:%x\n", rssi, info->rssi, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
 		}
 	}		
 }
@@ -683,43 +747,82 @@ static void tl_periodic_feedback(unsigned long data){
 	else{
 		struct tr_info *info = rcv_list->next;
 		unsigned int len = rcv_list->qlen; 
-		unsigned int size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 1)*len); // 3: 1 type 1 batt 1 len
+		unsigned int size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
 		struct sk_buff *rpt = tl_alloc_skb(dev_send2, parent_addr, dev_send2->dev_addr, size, U_FB); 
 		if(rpt!=NULL){
 			unsigned int i = 0;
 			rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
 			rpt->data[ETHERHEADLEN + 2] = len;
 
-			for (i=0; i < len; i++){
-				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+1);
+			for (i = 0; i < len; i++){
+				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
 				memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
 				rpt->data[ii+ETH_ALEN] = info->rssi;
-				info = rcv_list->next;
+				rpt->data[ii+ETH_ALEN+1] = info->batt;
+
+				info = rcv_list->next; // info = info->next;
 
 				if(info == NULL){
 					printk("Empty info\n");
 					break;
-				}	
-			}	
+				}
+			}
 			printk("Send Periodic Feedback(%d), parent = %x:%x:%x:%x:%x:%x with charge %d batt %d\n", U_FB, parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5], batt_i.m_status, batt_i.m_capacity);
 			dev_queue_xmit(rpt);
 		}		
 	}
-	if(!timer_pending(&tl_feedback_timer))	
-		mod_timer(&tl_feedback_timer, jiffies + msecs_to_jiffies(FB_PERIOD));
+
+	if(feedback_counter < 10){
+		if(!timer_pending(&tl_feedback_timer))
+			mod_timer(&tl_feedback_timer, jiffies + msecs_to_jiffies(FB_PERIOD));
+		feedback_counter++;
+	}
+	else{
+		feedback_counter = 0;
+	}
 }
 
-void send_bnack(unsigned char * dest_addr){
-	struct sk_buff * rpt;
-	
-	//if (aux_addr == NULL){
-	//	memcpy(dest_addr, multicast_addr, ETH_ALEN);
-	//} 
-	//else{
-	//	memcpy(dest_addr, aux_addr, ETH_ALEN);
-	//}
+void send_bnack(unsigned char *dest_addr){
+	struct sk_buff *rpt; 
+	unsigned int len; 
+	unsigned int size;
 
-	if (rcv_list == NULL || (rcv_list!=NULL && rcv_list->qlen == 0) ){
+	if(rcv_list == NULL){
+		printk("send_bnack Error, NULL rcv_list\n");
+	}
+		
+	len = rcv_list->qlen; 
+	size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
+	rpt = tl_alloc_skb(dev_send2, dest_addr, dev_send2->dev_addr, size, BLOCK_NACK); 
+	
+	if(rpt != NULL){
+		unsigned int i = 0;
+		struct tr_info *info = rcv_list->next;
+		
+		rpt->data[ETHERHEADLEN + 1] = set_batt(batt_i.m_status, batt_i.m_capacity);
+		rpt->data[ETHERHEADLEN + 2] = len;
+
+		for(i = 0; i < len; i++){
+			unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
+			
+			if(info == NULL){
+				printk("Empty info\n");
+				break;
+			}	
+			
+			memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
+			rpt->data[ii+ETH_ALEN] = info->rssi;
+			rpt->data[ii+ETH_ALEN+1] = info->batt;
+			info = info->next;
+		}
+
+		printk("Send BLOCK NACK(%d), dest_addr = %x:%x:%x:%x:%x:%x with batt %d, len %d\n", BLOCK_NACK, dest_addr[0], dest_addr[1], dest_addr[2], dest_addr[3], dest_addr[4], dest_addr[5], batt_i.m_capacity, len);
+		dev_queue_xmit(rpt);
+	}
+
+	/***** Maybe it will be deleted
+
+	if(rcv_list == NULL || (rcv_list != NULL && rcv_list->qlen == 0)){
 		unsigned int size = ETHERHEADLEN + 3;
 		printk("Empty or zero rcv list : SEND NULL BNACK\n");
 		rpt = tl_alloc_skb(dev_send2, dest_addr, dev_send2->dev_addr, size, BLOCK_NACK);
@@ -755,16 +858,19 @@ void send_bnack(unsigned char * dest_addr){
 
 		}
 	}
+	*/
 }
 
 void init_runtime(void){
 	static bool run_init = false;
-
 	if(run_init == false){
 		setup_timer(&tl_feedback_timer, &tl_periodic_feedback, 0);
-		mod_timer(&tl_feedback_timer, jiffies+msecs_to_jiffies(FB_PERIOD));
 		run_init = true;
 	}
+
+	if(!timer_pending(&tl_feedback_timer)){
+		mod_timer(&tl_feedback_timer, jiffies + msecs_to_jiffies(FB_PERIOD));
+	}
+	
+	feedback_counter = 0;
 }
-
-

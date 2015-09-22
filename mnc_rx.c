@@ -10,9 +10,9 @@
 
 #define ETIMEOUT 125 // 500msec
 #define DTIMEOUT 125 // 500msec
-#define BNACK_TIMEOUT 500 // 500msec
+#define BNACK_TIMEOUT 500 // 2000msec
 #define ETHERLEN 14
-#define IS_RUN 0
+#define IS_RUN 1
 
 static struct timer_list bnack_timer;
 static void bnack_func(unsigned long data);
@@ -68,13 +68,18 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		skb_linearize(skb);
 		
 		if(runtime){
+			printk(KERN_INFO "Runtime Control packet! ethertype: %x\n", ethertype);
+			//gjlee
+			
 			if(!tr_get_src()){
 				update_rssi(skb, rssi);
 			}
+
 			if(rssi > -80){
-				unsigned char * saddr = skb_mac_header(skb) + ETH_ALEN;
+				unsigned char *saddr = skb_mac_header(skb) + ETH_ALEN;
 				memcpy(last_addr, saddr, ETH_ALEN);
 				last_time = jiffies; 
+				printk("rssi = %d > -80, last_addr = %x:%x:%x:%x:%x:%x, last_time = %ld\n", rssi, last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], last_time);
 			}
 		}
 		
@@ -83,7 +88,7 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		return;
 	}
 	else{
-//		printk("Decoding?\n");
+//		printk("Data decoding start\n");
 //		netif_receive_skb(skb);
 		skb->head[mh_pos+12]=0x08;
 		skb->head[mh_pos+13]=0x00;
@@ -91,30 +96,31 @@ void decoding_try(struct sk_buff *skb, char rssi)
 
 		skb_linearize(skb);
 		
-		/*	
 		if(!tr_get_src()){
 			update_rssi(skb, rssi);
 		}
+		
 		if(rssi > -80){
-			unsigned char * saddr = skb_mac_header(skb)+6;
+			unsigned char *saddr = skb_mac_header(skb) + ETH_ALEN;
 			memcpy(last_addr, saddr, ETH_ALEN);
 			last_time = jiffies; 
+			printk("rssi = %d > -80, last_addr = %x:%x:%x:%x:%x:%x, last_time = %ld\n", rssi, last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], last_time);
 		}
-		*/
 
 		if(i == 0){
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
-			/*
+			
 			if(IS_RUN){
-				init_runtime();
 				runtime = true;
 			}
-			*/
-			//setup_timer(&bnack_timer, &bnack_func, 0);
-			//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
+			
+			setup_timer(&bnack_timer, &bnack_func, 0);
+			mod_timer(&bnack_timer, jiffies + BNACK_TIMEOUT);
 			i = 1;
 		}
+
+		init_runtime();
 
 		cjiffies = jiffies;
 		eid = skb->data[1];
@@ -125,31 +131,93 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		mnc_queue_head_check_etime(&list, cjiffies);
 
 		//ycshin: should be modified
-			
-		//	printk(KERN_INFO "last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_did[0], last_did[1], last_did[2]);
+
+		//printk(KERN_INFO "last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_did[0], last_did[1], last_did[2]);
 
 		for(j = 0; j < 3; j++){
 			if(eid == last_did[j]){
-				//			printk(KERN_INFO "Drop skb, eid = %x, last_did[%d] = %x\n", eid, j, last_did[j]);
+				//printk(KERN_INFO "Drop skb, eid = %x, last_did[%d] = %x\n", eid, j, last_did[j]);
 				kfree_skb(skb);
 				return;
 			}
-			//ycshin
-			/*	
-			if(!(eid > last_did[j]+2 && last_did[j] < 254 && last_did[j]!=0)){
-				bnack_trigger = false;		
+		}
+
+		bnack_trigger = true;
+		
+		for(j = 0; j < 3; j++){
+			if(last_did[j] == 0){
+				continue;
+			}
+			else if(eid > last_did[j]){
+				if(eid - last_did[j] <= 3){
+					bnack_trigger = false;
+					break;
+				}
+			}
+			else{
+				if(256 - last_did[j] + eid <= 4){
+					bnack_trigger = false;
+					break;
+				}
+			}
+
+			/*
+			else if(eid == 1){
+				if(!(last_did[j] == 255 || last_did[j] == 254 || last_did[j] == 253)){
+					bnack_trigger = false;
+					break;
+				}
+			}
+			else if(eid == 2){
+				if(!(last_did[j] == 1 || last_did[j] == 255 || last_did[j] == 254)){
+					bnack_trigger = true;
+				}
+			}
+			else if(eid == 3){
+				if(!(last_did[j] == 2 || last_did[j] == 1 || last_did[j] == 255)){
+					bnack_trigger = true;
+				}
+			}
+			else{
+				if(eid - last_did[j] > 3){
+					bnack_trigger = true;
+				}
 			}
 			*/
+
+			//ycshin
+			/*	
+					if(!(eid > last_did[j]+2 && last_did[j] < 254 && last_did[j]!=0)){
+					bnack_trigger = false;
+					}
+			 */
 		}
-		/* ycshin
-		if(bnack_trigger == true){
+
+		if(last_did[0] == 0 && last_did[1] == 0 && last_did[2] == 0)
+			bnack_trigger = false;
+
+		if(bnack_trigger){
 			unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
-			if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
+
+			printk("Immediately send BLOCK NACK, last_addr = %x:%x:%x:%x:%x:%x, jiffies = %ld, last_time = %ld\n", last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], jiffies, last_time);
+			if(jiffies - last_time < BNACK_TIMEOUT && !(last_addr[0] == 0 && last_addr[1] == 0 && last_addr[2] == 0 && last_addr[3] == 0 && last_addr[4] == 0 && last_addr[5] == 0))
 				send_bnack(last_addr);
 			else
 				send_bnack(mcast_addr);
 		}
-		*/
+		else{
+			mod_timer(&bnack_timer, jiffies + BNACK_TIMEOUT);
+		}
+
+		/* ycshin
+			 if(bnack_trigger == true){
+			 unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
+			 if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
+			 send_bnack(last_addr);
+			 else
+			 send_bnack(mcast_addr);
+			 }
+		 */
 		mncq = mnc_queue_head_find_eid(&list, eid);
 
 		if(mncq == NULL){
@@ -600,8 +668,8 @@ void print_matrix(int m, int n, unsigned char M[][n]){
 static void bnack_func(unsigned long data){
 	unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
 	
-	printk("Send BNACK\n");
-	if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
+	printk("Expired Send BLOCK NACK, last_addr = %x:%x:%x:%x:%x:%x, jiffies = %ld, last_time = %ld\n", last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], jiffies, last_time);
+	if(jiffies - last_time < BNACK_TIMEOUT && !(last_addr[0] == 0 && last_addr[1] == 0 && last_addr[2] == 0 && last_addr[3] == 0 && last_addr[4] == 0 && last_addr[5] == 0))
 		send_bnack(last_addr);
 	else
 		send_bnack(mcast_addr);
