@@ -65,6 +65,7 @@ struct tr_info{
 	bool tf_cnt;
 	bool nr_cnt;
 	struct tr_info_list nbr_list;
+	struct tr_info_list srp_list;
 	struct tr_info *next;
 	struct tr_info *prev;
 	struct tr_info_list *head;
@@ -77,22 +78,33 @@ struct dst_info_list{
 
 struct dst_info{
 	unsigned char addr[ETH_ALEN];
-	unsigned char raddr1[ETH_ALEN];
-	unsigned char raddr2[ETH_ALEN];
-	unsigned char raddr3[ETH_ALEN];
-	unsigned char min_clout1;
-	unsigned char min_clout2;
-	unsigned char min_clout3;
 	unsigned char pr_dof;
+	unsigned char round;
 	struct dst_info *next;
 	struct dst_info *prev;
 	struct dst_info_list *head;
 };
 
 struct relay_info{
-	unsigned char addr[ETH_ALEN];
-	unsigned int clout_sum;
-	unsigned char max_clout;
+	unsigned int  utility;
+	unsigned char round;
+	unsigned char addr1[ETH_ALEN];
+	unsigned char clout1;
+	unsigned char rate1;
+	unsigned char addr2[ETH_ALEN];
+	unsigned char clout2;
+	unsigned char rate2;
+	unsigned char addr3[ETH_ALEN];
+	unsigned char clout3;
+	unsigned char rate3;
+	struct relay_info *next;
+	struct relay_info *prev;
+	struct relay_info_list *head;
+};
+
+struct relay_info_list{
+	struct relay_info *next;
+	unsigned int qlen;
 };
 
 unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len);
@@ -132,6 +144,12 @@ void dst_info_free(struct dst_info *info);
 void dst_info_insert(struct dst_info *newinfo, struct dst_info_list *list);
 struct dst_info *dst_info_find_addr(struct dst_info_list *list, unsigned char addr[]);
 
+void relay_info_list_init(struct relay_info_list *list);
+void relay_info_insert(struct relay_info *newinfo, struct relay_info_list *list);
+void relay_info_list_purge(struct relay_info_list *list);
+struct relay_info *relay_info_create(void);
+void relay_info_free(struct relay_info *info);
+
 void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n);
 bool tr_get_src(void);
 bool tr_get_sys(void);
@@ -141,6 +159,9 @@ unsigned int tr_get_tf_k(void);
 unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
 void trinfo_print(struct tr_info *info);
+void tr_info_list_print(struct tr_info_list *list);
 unsigned int get_tot_rcv(struct tr_info* info);
-
+unsigned char set_batt(unsigned char status, unsigned char capacity);
+unsigned char get_capa(unsigned char batt);
+unsigned char get_charge(unsigned char batt);
 #endif

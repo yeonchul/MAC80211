@@ -1,0 +1,115 @@
+#include<linux/module.h>
+#include<linux/kernel.h>
+
+#include "tl_rx.h"
+
+int init_module(void)
+{
+	unsigned char i=0;
+	unsigned char total_n = 10;
+	unsigned char n_hop1 = 5;
+	unsigned char max_hop2 = 5;
+	unsigned char batt_src = 0;
+	unsigned char b_v = 0;
+
+	struct tr_info_list total_list;
+	struct tr_info_list src_list;
+	struct tr_info * info;
+
+	tr_info_list_init(&total_list);
+	tr_info_list_init(&src_list);
+
+	get_random_bytes(&b_v, 1);
+	batt_src = set_batt((b_v%100)+1, b_v%2);
+	
+	printk(KERN_INFO "test_module() called\n");
+	
+	for (i=0; i < total_n; i++){
+		unsigned char addr[6] = {0};
+		unsigned char batt = 0;
+		char rssi = 0;
+		unsigned int n_rcv[NUM_MCS]={0};
+		unsigned int num = 100;
+		struct net_device * dev = NULL;
+		unsigned char capa = 0;
+		unsigned char charge = 0;
+		unsigned char m = 0;
+		unsigned char v = 0;
+
+		get_random_bytes(&v, 1);
+		rssi = -1*(v%100+1);
+		get_random_bytes(&addr, 6);
+		capa = (v%100)+1;
+		charge = v%2;
+		batt = set_batt(charge, capa);
+
+		for (m=0; m < NUM_MCS; m++){
+			unsigned int temp_rcv = 0;
+			get_random_bytes(&temp_rcv, 4);
+			n_rcv[m] = temp_rcv % num;	
+		}
+		 	
+		tr_info_insert(tr_info_create(addr, dev, num, n_rcv, rssi, batt), &total_list);
+	}
+
+	info = total_list.next;
+
+	for (i=0; i < n_hop1; i++){
+		unsigned char n_hop2 = 0;
+		unsigned char temp = 0;
+		struct tr_info * hop1;
+		struct tr_info_list *nbr_2hop_list;
+		unsigned char j=0;
+
+		hop1 = 	tr_info_create(info->addr, info->dev, info->total_num, info->rcv_num, info->rssi, info->batt);
+		tr_info_insert(hop1, &src_list);
+		nbr_2hop_list = &(hop1->nbr_list);
+
+		get_random_bytes(&temp, 1);
+		n_hop2 = (temp % max_hop2)+1;			
+
+		for (j = 0; j < n_hop2; j++){
+			unsigned char k = 0;
+			unsigned char move = 0;
+			struct tr_info * hop2;
+		
+			get_random_bytes(&temp, 1);
+			move = temp % total_n;
+			hop2 = total_list.next;
+			
+			for (k=0; k < move; k++){
+				hop2 = hop2->next;			
+			}
+			
+			if (!memcmp(hop2->addr, hop1->addr, ETH_ALEN)){
+				printk(KERN_INFO "same addr\n");
+			}
+			else{
+			char rssi = 0;
+			unsigned int n_rcv[NUM_MCS]={0};
+			unsigned char m = 0;
+			unsigned char v = 0;
+
+			get_random_bytes(&v, 1);
+			rssi = -1*(v%100+1);
+
+			for (m=0; m < NUM_MCS; m++){
+				unsigned int temp_rcv = 0;
+				get_random_bytes(&temp_rcv, 4);
+				n_rcv[m] = temp_rcv % hop2->total_num;	
+			}
+
+			tr_info_insert(tr_info_create(hop2->addr, hop2->dev, hop2->total_num, hop2->rcv_num, hop2->rssi, hop2->batt), nbr_2hop_list);
+			}
+		}
+	}
+		
+	tr_info_list_print(total_list);
+	tr_info_list_print(src_list);
+
+	return 0;
+}
+
+void cleanup_module(void){
+	printk(KERN_INFO "cleanup_module() called\n");
+}

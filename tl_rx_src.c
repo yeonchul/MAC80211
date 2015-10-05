@@ -76,24 +76,6 @@ bool tl_start_check(struct sk_buff *skb){
 
 
 
-void tr_info_list_print(struct tr_info_list *list){
-	struct tr_info *test_info = list->next;
-	printk("-------------------------src_nbr_list status---------------------------\n");
-	while(test_info != NULL){
-		struct tr_info *test_src_nbr_info = (&(test_info->nbr_list))->next;
-		printk(KERN_INFO "1hop %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->rssi, test_info->batt, test_info->rcv_num[0], test_info->rcv_num[1], test_info->rcv_num[2], test_info->rcv_num[3], test_info->rcv_num[4], test_info->rcv_num[5], test_info->rcv_num[6], test_info->rcv_num[7],  test_info->rcv_num[8], test_info->rcv_num[9], test_info->rcv_num[10], test_info->rcv_num[11], test_info->total_num, test_info->tf_cnt, test_info->nr_cnt);
-		//printk(KERN_INFO "1-hop addr: %x:%x:%x:%x:%x:%x, total_num = %d, rcv_num = %d, tf_cnt = %d, nr_cnt = %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->total_num, test_info->rcv_num, test_info->tf_cnt, test_info->nr_cnt);
-		while(test_src_nbr_info != NULL){
-			printk(KERN_INFO "---> %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_src_nbr_info->addr[0], test_src_nbr_info->addr[1], test_src_nbr_info->addr[2], test_src_nbr_info->addr[3], test_src_nbr_info->addr[4], test_src_nbr_info->addr[5], test_src_nbr_info->rssi, test_src_nbr_info->batt, test_src_nbr_info->rcv_num[0], test_src_nbr_info->rcv_num[1], test_src_nbr_info->rcv_num[2], test_src_nbr_info->rcv_num[3], test_src_nbr_info->rcv_num[4], test_src_nbr_info->rcv_num[5], test_src_nbr_info->rcv_num[6], test_src_nbr_info->rcv_num[7], test_src_nbr_info->rcv_num[8], test_src_nbr_info->rcv_num[9], test_src_nbr_info->rcv_num[10], test_src_nbr_info->rcv_num[11], test_src_nbr_info->total_num, test_src_nbr_info->tf_cnt, test_src_nbr_info->nr_cnt);
-			test_src_nbr_info = test_src_nbr_info->next;
-		}
-		test_info = test_info->next;
-	}
-	printk("-----------------------------------------------------------------------\n");
-
-}
-
-
 static void tl_mcs_send_timer_func(unsigned long data){
 	static unsigned char mcs = 0;
 	static unsigned int tr_id = 0;

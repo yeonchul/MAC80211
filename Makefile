@@ -1,4 +1,8 @@
 obj-$(CPTCFG_MAC80211) += mac80211.o
+obj-$(CPTCFG_MAC80211) += test_evcast.o
+
+test_evcast-y := \
+	tl_rx.o tl_rx_list.o tl_rx_param.o
 
 # mac80211 objects
 mac80211-y := \
