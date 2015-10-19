@@ -20,7 +20,7 @@ int init_module(void)
 	tr_info_list_init(&src_list);
 
 	get_random_bytes(&b_v, 1);
-	batt_src = set_batt((b_v%100)+1, b_v%2);
+	batt_src = set_batt(b_v%2, (b_v%100)+1);
 	
 	printk(KERN_INFO "test_module() called\n");
 	
@@ -33,8 +33,9 @@ int init_module(void)
 		struct net_device * dev = NULL;
 		unsigned char capa = 0;
 		unsigned char charge = 0;
-		unsigned char m = 0;
+		int m = 0;
 		unsigned char v = 0;
+		
 
 		get_random_bytes(&v, 1);
 		rssi = -1*(v%100+1);
@@ -43,10 +44,23 @@ int init_module(void)
 		charge = v%2;
 		batt = set_batt(charge, capa);
 
-		for (m=0; m < NUM_MCS; m++){
+		for (m=NUM_MCS-1; m >= 0; m--){
 			unsigned int temp_rcv = 0;
 			get_random_bytes(&temp_rcv, 4);
-			n_rcv[m] = temp_rcv % num;	
+			temp_rcv %= num;
+			temp_rcv++;		
+	
+			if (m == NUM_MCS-1)
+				n_rcv[m] = temp_rcv;
+		
+			else{
+				while(temp_rcv < n_rcv[m+1]){
+					get_random_bytes(&temp_rcv, 4);
+					temp_rcv %= num;
+					temp_rcv++;		
+				}	
+				n_rcv[m] = temp_rcv;	
+			}
 		}
 		 	
 		tr_info_insert(tr_info_create(addr, dev, num, n_rcv, rssi, batt), &total_list);
@@ -63,6 +77,7 @@ int init_module(void)
 
 		hop1 = 	tr_info_create(info->addr, info->dev, info->total_num, info->rcv_num, info->rssi, info->batt);
 		tr_info_insert(hop1, &src_list);
+		tr_info_list_init(&(hop1->nbr_list));
 		nbr_2hop_list = &(hop1->nbr_list);
 
 		get_random_bytes(&temp, 1);
@@ -81,32 +96,58 @@ int init_module(void)
 				hop2 = hop2->next;			
 			}
 			
-			if (!memcmp(hop2->addr, hop1->addr, ETH_ALEN)){
+			if (!memcmp(hop2->addr, hop1->addr, ETH_ALEN) || tr_info_find_addr(nbr_2hop_list, hop2->addr)!=NULL ){
 				printk(KERN_INFO "same addr\n");
 			}
 			else{
 			char rssi = 0;
 			unsigned int n_rcv[NUM_MCS]={0};
-			unsigned char m = 0;
+			int m = 0;
 			unsigned char v = 0;
 
 			get_random_bytes(&v, 1);
 			rssi = -1*(v%100+1);
-
-			for (m=0; m < NUM_MCS; m++){
+			
+	
+			for (m=NUM_MCS-1; m >= 0; m--){
 				unsigned int temp_rcv = 0;
 				get_random_bytes(&temp_rcv, 4);
-				n_rcv[m] = temp_rcv % hop2->total_num;	
+				temp_rcv %= hop2->total_num;
+				temp_rcv++;		
+				
+				if (m == NUM_MCS-1)
+					n_rcv[m] = temp_rcv;
+		
+				else{
+					while(temp_rcv < n_rcv[m+1]){
+						get_random_bytes(&temp_rcv, 4);
+						temp_rcv %= hop2->total_num;
+						temp_rcv++;		
+					}	
+					n_rcv[m] = temp_rcv;	
+				}
 			}
 
-			tr_info_insert(tr_info_create(hop2->addr, hop2->dev, hop2->total_num, hop2->rcv_num, hop2->rssi, hop2->batt), nbr_2hop_list);
+			tr_info_insert(tr_info_create(hop2->addr, hop2->dev, hop2->total_num, n_rcv, rssi, hop2->batt), nbr_2hop_list);
 			}
 		}
-	}
 		
-	tr_info_list_print(total_list);
-	tr_info_list_print(src_list);
+		info = info->next;
+	}
 
+	printk(KERN_INFO "Print lists\n");		
+	tr_info_list_print(&total_list);
+	tr_info_list_print(&src_list);
+
+		
+	printk(KERN_INFO "Start alg\n");
+	evcast_relay(&src_list, batt_src);	
+
+		
+	tr_info_list_purge(&total_list);
+	tr_info_list_purge(&src_list);
+
+		
 	return 0;
 }
 

@@ -85,10 +85,10 @@ struct dst_info{
 	struct dst_info_list *head;
 };
 
-struct relay_info{
+
+struct selected_relay_info{
 	unsigned int  utility;
 	unsigned char round;
-	unsigned char addr1[ETH_ALEN];
 	unsigned char clout1;
 	unsigned char rate1;
 	unsigned char addr2[ETH_ALEN];
@@ -97,6 +97,14 @@ struct relay_info{
 	unsigned char addr3[ETH_ALEN];
 	unsigned char clout3;
 	unsigned char rate3;
+};
+
+struct relay_info{
+	unsigned char round;
+	unsigned char type;
+	unsigned char addr[ETH_ALEN];
+	unsigned char clout;
+	unsigned char rate;
 	struct relay_info *next;
 	struct relay_info *prev;
 	struct relay_info_list *head;
@@ -147,7 +155,7 @@ struct dst_info *dst_info_find_addr(struct dst_info_list *list, unsigned char ad
 void relay_info_list_init(struct relay_info_list *list);
 void relay_info_insert(struct relay_info *newinfo, struct relay_info_list *list);
 void relay_info_list_purge(struct relay_info_list *list);
-struct relay_info *relay_info_create(void);
+struct relay_info *relay_info_create(unsigned char round, unsigned char type, unsigned char addr[], unsigned char clout, unsigned char rate);
 void relay_info_free(struct relay_info *info);
 
 void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n);
@@ -160,8 +168,14 @@ unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
 void trinfo_print(struct tr_info *info);
 void tr_info_list_print(struct tr_info_list *list);
+void dst_info_list_print(struct dst_info_list *list);
+void relay_info_list_print(struct relay_info_list *list);
+void rsc_adjust(struct relay_info_list * r_list, struct dst_info_list * d_list, unsigned char round);
 unsigned int get_tot_rcv(struct tr_info* info);
 unsigned char set_batt(unsigned char status, unsigned char capacity);
 unsigned char get_capa(unsigned char batt);
 unsigned char get_charge(unsigned char batt);
+void evcast_relay(struct tr_info_list * list, unsigned char batt_src);
+
+
 #endif

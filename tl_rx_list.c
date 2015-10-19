@@ -88,20 +88,28 @@ unsigned char get_pr_dof(struct dst_info_list *list, unsigned char addr[])
 
 unsigned char find_best_mcs(struct tr_info * info){
 	unsigned char i = 0;
-	unsigned char temp_value = 0;
+	unsigned int temp_value = 0;
 	unsigned char ret = 0;
 		
 	for(i=0; i<NUM_MCS; i++){
 		unsigned int time = cal_tx_time(i, 1, 1316);
 		unsigned int rcv = info->rcv_num[i];
+		unsigned int value = 0;	
+	
+		if (time==0)
+			continue;
 
-		unsigned int value = rcv*65536/time;
+		value = rcv*rcv*10000/time;
+		
+//		printk("MCS %d Rcv: %d Time: %d Value: %d\n", i, rcv, time, value);
 		if (value > temp_value)
 		{
 			temp_value = value;
 			ret = i;
 		}
 	}
+
+//	printk("Selected MCS: %d\n", ret);
 	return ret;
 }
 
@@ -675,23 +683,33 @@ void min_max_relay(struct tr_info_list *list){
 	*/
 }
 
-void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned char src_batt){
+void evcast_relay(struct tr_info_list *list,  unsigned char src_batt){
 	struct dst_info_list dst_list;
 	struct relay_info_list relay_list;
-	unsigned int max_time_us = 10000;	
+	
+	unsigned int bitrate_mbps = 1;
+	unsigned int max_time_us = 0;	
 	unsigned int used_time_us = 0;
 	unsigned int round = 0;
 	unsigned int pkt_len = 1400;
 	unsigned char omega = 2;
+	unsigned char max_round = 5;
+	unsigned int k = 10;
+
+	struct selected_relay_info relay;
 
 	//struct tr_info *test_info;
 	struct tr_info *info;
-	struct dst_info *d_info;
+	//struct dst_info *d_info;
 
 	dst_info_list_init(&dst_list);
 	relay_info_list_init(&relay_list);
 	
-	printk("Start EV-CAST Algorithm\n");
+	max_time_us = 8*pkt_len*8*k / 10*bitrate_mbps;  // 8/10 of the allowed time
+		
+		
+	
+	printk("Start EV-CAST Algorithm (Max time : %d us)\n", max_time_us);
 	
 	for(info = list->next; info != NULL; info = info->next){
 		struct tr_info *nbr_info;
@@ -735,21 +753,23 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 			}
 
 			if (is_srp == true){
+				printk("%x:%x:%x:%x:%x:%x AND %x:%x:%x:%x:%x:%x are SRP\n", info->addr[0], info->addr[1], info->addr[2], info->addr[3], info->addr[4], info->addr[5], info2->addr[0], info2->addr[1], info2->addr[2], info2->addr[3], info2->addr[4], info2->addr[5]);
 				tr_info_insert(tr_info_create(info2->addr, info2->dev, info2->total_num, info2->rcv_num, info2->rssi, info2->batt), &(info->srp_list));
 			}
 		}
 	}
-	
-	printk("Initialization of Destination List Complete, Num of Dest: %d\n", dst_list.qlen);
 
-	while(!dst_all_zero(&dst_list) && (used_time_us < max_time_us)){
-		struct relay_info relay;
+	printk("Initialization of Destination List Complete, Num of Dest: %d\n", dst_list.qlen);
+	dst_info_list_print(&dst_list);
+
+	while(!dst_all_zero(&dst_list) && (used_time_us < max_time_us) && (round < max_round) ){
 		//struct dst_info* dst;
 		struct tr_info * hop1;
 	
+		round++;
+		
 		relay.utility = 0;
-		relay.round= 0;	
-		memset(relay.addr1, 0, ETH_ALEN);
+		relay.round= round;	
 		relay.rate1 = 0;
 		relay.clout1= 0;
 		memset(relay.addr2, 0, ETH_ALEN);
@@ -758,22 +778,19 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 		memset(relay.addr3, 0, ETH_ALEN);
 		relay.rate3 = 0;
 		relay.clout3 = 0;
-		relay.next = NULL;
-		relay.prev = NULL;
-		relay.head = NULL;
-		
-		round++;
-		if (round > 10){
+			
+		/*
+		if (round > max_round){
 			printk("Too high round\n");
 			return;
 		}
-		
+		*/
+
 		printk("===== Round %d =====\n", round);
-		
+	
+#if 1	
 		// 1-hop only
-		
 		for(hop1 = list->next; hop1 != NULL; hop1 = hop1->next){
-			struct dst_info_list temp_dst_list;
 			unsigned char pr_dof = get_pr_dof(&dst_list, hop1->addr);
 			struct tr_info * hop2;
 			struct tr_info * srp;
@@ -782,8 +799,6 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 			unsigned int total_cost = 0;
 			unsigned char rate1 = 0;
 			unsigned char clout1 = 0;
-			
-			dst_info_list_init(&temp_dst_list);	
 
 			if (pr_dof > 0){
 					struct tr_info * other1;
@@ -793,33 +808,35 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					unsigned char charge = 0;
 					unsigned char capacity = 0;
 					
-					rate1 = find_best_mcs(hop1); 				
+					rate1 = find_best_mcs(hop1); 			
+					if (rate1 >= NUM_MCS){
+							printk("Invalid rate\n");
+							break;
+					}
+						
 					clout1 = k_to_n(pr_dof, hop1->total_num, hop1->rcv_num[rate1]);
 					remain_c = clout1;
 					user++;
-					dst_info_insert(dst_info_create(hop1->addr, 0), &temp_dst_list);	
-					
+				
 					for(other1 = list->next; other1 != NULL; other1 = other1->next){
 						if (hop1 != other1){
 							unsigned char pr_dof2 = get_pr_dof(&dst_list, other1->addr);
 							if (pr_dof2 == 0)
 								continue;
-							
 							if (n_to_k(clout1, other1->total_num, other1->rcv_num[rate1]) > pr_dof2){
-								dst_info_insert(dst_info_create(other1->addr, 0), &temp_dst_list);
 								user++;
 							}
 						}	
 					}
 					for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
-						if (r_info->clout1 > 0 && rate1 <= r_info->rate1){
-							if (r_info->clout1 >= remain_c){
-								time_cost += cal_tx_time(rate1, remain_c, pkt_len)-cal_tx_time(r_info->rate1, remain_c, pkt_len);
+						if (r_info->type == 0 && r_info->clout > 0 && rate1 <= r_info->rate){
+							if (r_info->clout >= remain_c){
+								time_cost += cal_tx_time(rate1, remain_c, pkt_len)-cal_tx_time(r_info->rate, remain_c, pkt_len);
 								remain_c = 0;
 							}
 							else{
-								time_cost += cal_tx_time(rate1, r_info->clout1, pkt_len)-cal_tx_time(r_info->rate1, r_info->clout1, pkt_len);
-								remain_c = remain_c - r_info->clout1;
+								time_cost += cal_tx_time(rate1, r_info->clout, pkt_len)-cal_tx_time(r_info->rate, r_info->clout, pkt_len);
+								remain_c = remain_c - r_info->clout;
 							}
 						}
 					}
@@ -829,111 +846,139 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					capacity = get_capa(src_batt);			
 					
 					if (charge == 1){
-						total_cost = time_cost*100/(omega*capacity); 
+						total_cost = time_cost*1000/(omega*capacity); 
 					}
 					else{
-						total_cost = time_cost*100/(capacity); 
+						total_cost = time_cost*1000/(capacity); 
 					}
-
-					utility = user*10000/total_cost;
-
+					
+					if(total_cost == 0){
+						printk("cost is 0\n");
+						continue;
+					}
+					
+					utility = user*10000000/total_cost;
+					printk("utility: %d\n", utility);
+					
+				
 					if (utility >= relay.utility){
 						relay.utility = utility;
 						relay.round = round;
 						relay.rate1 = rate1;
 						relay.clout1 = clout1;
+						memset(relay.addr2, 0, ETH_ALEN);
 						relay.rate2 = 0;
 						relay.clout2 = 0;
+						memset(relay.addr3, 0, ETH_ALEN);
 						relay.rate3 = 0;
 						relay.clout3 = 0; 
 					}
 			} // if the 1hop node is unserved
-		
+#if 1	
 			for(hop2 = (hop1->nbr_list).next; hop2 != NULL; hop2 = hop2->next){
-				unsigned char pr_dof2 = get_pr_dof(&dst_list, hop2->addr);
+				unsigned char pr_dof2 = 0;
+				unsigned char rate2 = 0; 				
+				unsigned char clout2 = 0;
+				unsigned char remain_c = 0;	
+				unsigned int time_cost2 = 0;
+				unsigned char charge = 0;
+				unsigned char capacity = 0;
+				unsigned char user2 = 0;
 
-				if (pr_dof2 > 0 &&  dst_info_find_addr(&temp_dst_list, hop2->addr)==NULL){
-					struct tr_info * other2;
-					unsigned char rate2 = find_best_mcs(hop2); 				
-					unsigned char clout2 = k_to_n(pr_dof2, hop2->total_num, hop2->rcv_num[rate2]);
-					unsigned char remain_c = clout2;	
-					unsigned int time_cost2 = 0;
-					unsigned char charge = 0;
-					unsigned char capacity = 0;
-					unsigned char user2 = 0;
-					struct relay_info * r_info;
-					
-					user2++;	
-					dst_info_insert(dst_info_create(hop2->addr, 0), &temp_dst_list);	
-					
-					for(other2 = (hop1->nbr_list).next; other2 != NULL; other2 = other2->next){
-						if (hop2 != other2){
-							unsigned char pr_dof_other2 = get_pr_dof(&dst_list, other2->addr);
-							if (pr_dof2 == 0)
-								continue;
-							
-							if (n_to_k(clout2, other2->total_num, other2->rcv_num[rate2]) > pr_dof_other2){
-								if (dst_info_find_addr(&temp_dst_list, other2->addr)==NULL){
-									dst_info_insert(dst_info_create(other2->addr, 0), &temp_dst_list);	
-									user2++;	
-								}
-							}
-						}	
-					}
-					for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
-						if (!memcmp(r_info->addr2, hop1->addr, ETH_ALEN) && r_info->clout2 > 0 && rate2 <= r_info->rate2){
-							if (r_info->clout2 >= remain_c){
-								time_cost2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate2, remain_c, pkt_len);
-								remain_c = 0;
-							}
-							else{
-								time_cost2 += cal_tx_time(rate2, r_info->clout2, pkt_len)-cal_tx_time(r_info->rate2, r_info->clout2, pkt_len);
-								remain_c = remain_c - r_info->clout2;
-							}
+				struct relay_info * r_info;
+				struct tr_info * other2;
+
+				unsigned char dof_by_src = 0;
+				struct tr_info * info_from_src;
+				
+				info_from_src =	tr_info_find_addr(list, hop2->addr);
+				if (info_from_src != NULL)
+					dof_by_src = n_to_k(clout1, info_from_src->total_num, info_from_src->rcv_num[rate1]);
+				else
+					dof_by_src = 0;	
+
+				pr_dof2 = get_pr_dof(&dst_list, hop2->addr) > dof_by_src ? get_pr_dof(&dst_list, hop2->addr) - dof_by_src : 0;
+
+				if (pr_dof2 == 0)
+					continue;			
+				
+				user2 = 1;
+				rate2 = find_best_mcs(hop2);
+				printk("pr_dof2: %d, rcv:%d, rate %d\n", pr_dof2, hop2->rcv_num[rate2], rate2);
+				clout2 = k_to_n(pr_dof2, hop2->total_num, hop2->rcv_num[rate2]);
+				remain_c = clout2;	
+				
+				for(other2 = (hop1->nbr_list).next; other2 != NULL; other2 = other2->next){
+					if (hop2 != other2){
+						unsigned char pr_dof_other2 = get_pr_dof(&dst_list, other2->addr);
+						info_from_src =	tr_info_find_addr(list, other2->addr);
+						if (info_from_src != NULL)
+							dof_by_src = n_to_k(clout1, info_from_src->total_num, info_from_src->rcv_num[rate1]);	
+						else
+							dof_by_src = 0;
+
+						pr_dof_other2 = pr_dof_other2 > dof_by_src ? pr_dof_other2 - dof_by_src : 0;							
+						if (pr_dof_other2 == 0)
+							continue;
+
+						if (n_to_k(clout2, other2->total_num, other2->rcv_num[rate2]) > pr_dof_other2){
+							user2++;	
 						}
-						else if (!memcmp(r_info->addr3, hop1->addr, ETH_ALEN) && r_info->clout3 > 0 && rate2 <= r_info->rate3){
-							if (r_info->clout3 >= remain_c){
-								time_cost2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate3, remain_c, pkt_len);
-								remain_c = 0;
-							}
-							else{
-								time_cost2 += cal_tx_time(rate2, r_info->clout3, pkt_len)-cal_tx_time(r_info->rate3, r_info->clout3, pkt_len);
-								remain_c = remain_c - r_info->clout3;
-							}
+					}	
+				}
+				
+				for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
+					if (!memcmp(r_info->addr, hop1->addr, ETH_ALEN) && r_info->clout > 0 && rate2 <= r_info->rate){
+						if (r_info->clout >= remain_c){
+							time_cost2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate, remain_c, pkt_len);
+							remain_c = 0;
+						}
+						else{
+							time_cost2 += cal_tx_time(rate2, r_info->clout, pkt_len)-cal_tx_time(r_info->rate, r_info->clout, pkt_len);
+							remain_c = remain_c - r_info->clout;
 						}
 					}
+				}
+		
+				time_cost2+=cal_tx_time(rate2, remain_c, pkt_len);
+				charge = get_charge(hop2->batt);
+				capacity = get_capa(hop2->batt);			
+				
+				if (capacity == 0){
+					printk("Zero capacity\n");
+					continue;
+				}
+	
+				if (charge == 1){
+					total_cost += time_cost2*1000 / (omega*capacity);
+				}
+				else{
+					total_cost += time_cost2*1000 / capacity;	
+				}
 
-					time_cost2+=cal_tx_time(rate2, remain_c, pkt_len);
-					charge = get_charge(hop2->batt);
-					capacity = get_capa(hop2->batt);			
-					
-					if (charge == 1){
-						total_cost += time_cost2*100 / (omega*capacity);
-					}
-					else{
-						total_cost += time_cost2*100 / capacity;	
-					}
-					utility = (user+user2)*10000 / total_cost;					
+				if (total_cost == 0)
+					continue;
+				
+				utility = (user+user2)*10000000 / total_cost;					
 
-					if (utility >= relay.utility){
-						relay.utility = utility;
-						relay.round = round;
-						relay.rate1 = rate1;
-						relay.clout1 = clout1;
-						memcpy(relay.addr2, hop2->addr, ETH_ALEN);  
-						relay.rate2 = rate2;
-						relay.clout2 = clout2;
-						relay.rate3 = 0;
-						relay.clout3 = 0; 
-					}		
-				}//pr_dof	
+				if (utility >= relay.utility){
+					relay.utility = utility;
+					relay.round = round;
+					relay.rate1 = rate1;
+					relay.clout1 = clout1;
+					memcpy(relay.addr2, hop1->addr, ETH_ALEN);  
+					relay.rate2 = rate2;
+					relay.clout2 = clout2;
+					memset(relay.addr3, 0, ETH_ALEN);  
+					relay.rate3 = 0;
+					relay.clout3 = 0; 
+				}	
 			}//for 2hop nodes of a chosen 1hop node
 			
-			
 			total_cost = 0;
-			
+	#endif
+#if 1		
 			for (srp = (hop1->srp_list).next; srp != NULL; srp = srp->next){
-				struct dst_info_list temp_dst_list2;
 				unsigned char pr_dof_srp = get_pr_dof(&dst_list, srp->addr);
 				unsigned char rate1 = 0;
 				unsigned char rate2 = 0;
@@ -976,20 +1021,19 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 								continue;
 							
 							if (n_to_k(clout1, other1->total_num, other1->rcv_num[rate1]) > pr_dof2){
-								dst_info_insert(dst_info_create(other1->addr, 0), &temp_dst_list);
 								user1++;
 							}
 					}
 
 					for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
-						if (r_info->clout1 > 0 && rate1 <= r_info->rate1){
-							if (r_info->clout1 >= remain_c){
-								time_cost += cal_tx_time(rate1, remain_c, pkt_len)-cal_tx_time(r_info->rate1, remain_c, pkt_len);
+						if (r_info->type == 0 && r_info->clout > 0 && rate1 <= r_info->rate){
+							if (r_info->clout >= remain_c){
+								time_cost += cal_tx_time(rate1, remain_c, pkt_len)-cal_tx_time(r_info->rate, remain_c, pkt_len);
 								remain_c = 0;
 							}
 							else{
-								time_cost += cal_tx_time(rate1, r_info->clout1, pkt_len)-cal_tx_time(r_info->rate1, r_info->clout1, pkt_len);
-								remain_c = remain_c - r_info->clout1;
+								time_cost += cal_tx_time(rate1, r_info->clout, pkt_len)-cal_tx_time(r_info->rate, r_info->clout, pkt_len);
+								remain_c = remain_c - r_info->clout;
 							}
 						}
 					}
@@ -999,10 +1043,10 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					capacity = get_capa(src_batt);			
 
 					if (charge == 1){
-						total_cost = time_cost*100/(omega*capacity); 
+						total_cost = time_cost*1000/(omega*capacity); 
 					}
 					else{
-						total_cost = time_cost*100/(capacity); 
+						total_cost = time_cost*1000/(capacity); 
 					}
 				}//if either 1-hop or the chosen srp is unserved
 		
@@ -1024,7 +1068,7 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					pr_dof2 = get_pr_dof(&dst_list, hop2->addr) > dof_by_src ? get_pr_dof(&dst_list, hop2->addr) - dof_by_src : 0;
 
 					// if the pr_dof of that node is 0 or 
-					if (!(pr_dof2 > 0 &&  dst_info_find_addr(&temp_dst_list, hop2->addr)==NULL))
+					if (pr_dof2 == 0)
 						continue;
 				
 					user2 = 1;	
@@ -1032,8 +1076,6 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					clout2 = k_to_n(pr_dof2, hop2->total_num, hop2->rcv_num[rate2]);
 					remain_c = clout2;	
 
-					dst_info_insert(dst_info_create(hop2->addr, 0), &temp_dst_list);	
-					
 					for(other2 = (hop1->nbr_list).next; other2 != NULL; other2 = other2->next){
 						if (hop2 != other2){
 							unsigned char pr_dof_other2 = get_pr_dof(&dst_list, other2->addr);
@@ -1049,32 +1091,19 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 								continue;
 							
 							if (n_to_k(clout2, other2->total_num, other2->rcv_num[rate2]) > pr_dof_other2){
-								if (dst_info_find_addr(&temp_dst_list, other2->addr)==NULL){
-									dst_info_insert(dst_info_create(other2->addr, 0), &temp_dst_list);	
-									user2++;	
-								}
+								user2++;	
 							}
 						}	
 					}
 					for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
-						if (!memcmp(r_info->addr2, hop1->addr, ETH_ALEN) && r_info->clout2 > 0 && rate2 <= r_info->rate2){
-							if (r_info->clout2 >= remain_c){
-								time2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate2, remain_c, pkt_len);
+						if (!memcmp(r_info->addr, hop1->addr, ETH_ALEN) && r_info->clout > 0 && rate2 <= r_info->rate){
+							if (r_info->clout >= remain_c){
+								time2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate, remain_c, pkt_len);
 								remain_c = 0;
 							}
 							else{
-								time2 += cal_tx_time(rate2, r_info->clout2, pkt_len)-cal_tx_time(r_info->rate2, r_info->clout2, pkt_len);
-								remain_c = remain_c - r_info->clout2;
-							}
-						}
-						else if (!memcmp(r_info->addr3, hop1->addr, ETH_ALEN) && r_info->clout3 > 0 && rate2 <= r_info->rate3){
-							if (r_info->clout3 >= remain_c){
-								time2 += cal_tx_time(rate2, remain_c, pkt_len)-cal_tx_time(r_info->rate3, remain_c, pkt_len);
-								remain_c = 0;
-							}
-							else{
-								time2 += cal_tx_time(rate2, r_info->clout3, pkt_len)-cal_tx_time(r_info->rate3, r_info->clout3, pkt_len);
-								remain_c = remain_c - r_info->clout3;
+								time2 += cal_tx_time(rate2, r_info->clout, pkt_len)-cal_tx_time(r_info->rate, r_info->clout, pkt_len);
+								remain_c = remain_c - r_info->clout;
 							}
 						}
 					}
@@ -1084,10 +1113,10 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					capacity = get_capa(hop1->batt);			
 					
 					if (charge == 1){
-						total_cost += time2*100 / (omega*capacity);
+						total_cost += time2*1000 / (omega*capacity);
 					}
 					else{
-						total_cost += time2*100 / capacity;	
+						total_cost += time2*1000 / capacity;	
 					}
 				// the chosen 2-hop node of the target 1-hop node
 				
@@ -1108,7 +1137,7 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					pr_dof2 = get_pr_dof(&dst_list, hop2->addr) > dof_by_src ? get_pr_dof(&dst_list, hop2->addr) - dof_by_src : 0;
 
 					// if the pr_dof of that node is 0 or dst_info is found
-					if (!(pr_dof2 > 0 &&  dst_info_find_addr(&temp_dst_list, hop2->addr)==NULL))
+					if (pr_dof2 == 0)
 						continue;
 					
 					user3 = 1;
@@ -1116,8 +1145,6 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					clout3 = k_to_n(pr_dof2, hop2->total_num, hop2->rcv_num[rate3]);
 					remain_c = clout3;	
 
-					dst_info_insert(dst_info_create(hop2->addr, 0), &temp_dst_list);	
-					
 					for(other2 = (srp->nbr_list).next; other2 != NULL; other2 = other2->next){
 						if (hop2 != other2){
 							unsigned char pr_dof_other2 = get_pr_dof(&dst_list, other2->addr);
@@ -1133,32 +1160,19 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 								continue;
 							
 							if (n_to_k(clout2, other2->total_num, other2->rcv_num[rate3]) > pr_dof_other2){
-								if (dst_info_find_addr(&temp_dst_list, other2->addr)==NULL){
-									dst_info_insert(dst_info_create(other2->addr, 0), &temp_dst_list);	
-									user3++;	
-								}
+								user3++;	
 							}
 						}	
 					}
 					for (r_info = relay_list.next; r_info != NULL; r_info = r_info->next){
-						if (!memcmp(r_info->addr2, hop1->addr, ETH_ALEN) && r_info->clout2 > 0 && rate3 <= r_info->rate2){
-							if (r_info->clout2 >= remain_c){
-								time3 += cal_tx_time(rate3, remain_c, pkt_len)-cal_tx_time(r_info->rate2, remain_c, pkt_len);
+						if (!memcmp(r_info->addr, hop1->addr, ETH_ALEN) && r_info->clout > 0 && rate3 <= r_info->rate){
+							if (r_info->clout >= remain_c){
+								time3 += cal_tx_time(rate3, remain_c, pkt_len)-cal_tx_time(r_info->rate, remain_c, pkt_len);
 								remain_c = 0;
 							}
 							else{
-								time3 += cal_tx_time(rate3, r_info->clout2, pkt_len)-cal_tx_time(r_info->rate2, r_info->clout2, pkt_len);
-								remain_c = remain_c - r_info->clout2;
-							}
-						}
-						else if (!memcmp(r_info->addr3, hop1->addr, ETH_ALEN) && r_info->clout3 > 0 && rate3 <= r_info->rate3){
-							if (r_info->clout3 >= remain_c){
-								time3 += cal_tx_time(rate3, remain_c, pkt_len)-cal_tx_time(r_info->rate3, remain_c, pkt_len);
-								remain_c = 0;
-							}
-							else{
-								time3 += cal_tx_time(rate3, r_info->clout3, pkt_len)-cal_tx_time(r_info->rate3, r_info->clout3, pkt_len);
-								remain_c = remain_c - r_info->clout3;
+								time3 += cal_tx_time(rate3, r_info->clout, pkt_len)-cal_tx_time(r_info->rate, r_info->clout, pkt_len);
+								remain_c = remain_c - r_info->clout;
 							}
 						}
 					}
@@ -1168,13 +1182,13 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					capacity = get_capa(srp->batt);			
 
 					if (charge == 1){
-						total_cost += time3*100 / (omega*capacity);
+						total_cost += time3*1000 / (omega*capacity);
 					}
 					else{
-						total_cost += time3*100 / capacity;	
+						total_cost += time3*1000 / capacity;	
 					}
 
-					utility = (user1+user2+user3)*10000 / total_cost;					
+					utility = (user1+user2+user3)*1000000 / total_cost;					
 						if (utility >= relay.utility){
 							relay.utility = utility;
 							relay.round = round;
@@ -1190,9 +1204,90 @@ void evcast_relay(struct tr_info_list *list, unsigned char src_addr[], unsigned 
 					}// the chosen 2-hop node by the srp of the target node	
 				}// the chosen  chosen 2-hop node of the target 1-hop node 
 			}// with the selected srp
+#endif
 		}//hop1 node
-		printk("Best relay selection for round %d\n", round);	
+#endif
+	
+		
+		if (relay.clout1 > 0){
+			struct tr_info * by_src;
+			unsigned char src_addr[ETH_ALEN] = {0};
+
+			for (by_src = list->next; by_src != NULL; by_src = by_src->next){
+				struct dst_info * dst;
+				dst = dst_info_find_addr(&dst_list, by_src->addr);
+
+				if (dst->pr_dof == 0)
+					continue;
+				else{
+					unsigned char dof_by_src = n_to_k(relay.clout1, by_src->total_num, by_src->rcv_num[relay.rate1]);
+					dst->pr_dof = dst->pr_dof > dof_by_src ? dst->pr_dof - dof_by_src : 0;
+					if(dst->pr_dof == 0)
+						dst->round = round;
+				}
+			}
+			
+			relay_info_insert(relay_info_create(round, 0, src_addr, relay.clout1, relay.rate1), &relay_list);
+
+		}
+		if (relay.clout2 > 0){
+			struct tr_info * hop1 = tr_info_find_addr(list, relay.addr2);
+			struct tr_info * by_hop1;
+			
+			if (hop1 != NULL){
+				for (by_hop1 = (hop1->nbr_list).next; by_hop1 != NULL; by_hop1 = by_hop1->next){
+					struct dst_info * dst;
+					dst = dst_info_find_addr(&dst_list, by_hop1->addr);
+
+					if (dst->pr_dof == 0)
+						continue;
+					else{
+						unsigned char dof_by_hop1 = n_to_k(relay.clout2, by_hop1->total_num, by_hop1->rcv_num[relay.rate2]);
+						dst->pr_dof = dst->pr_dof > dof_by_hop1 ? dst->pr_dof - dof_by_hop1 : 0;
+						if(dst->pr_dof == 0)
+							dst->round = round;
+					}
+				}
+			}
+
+			relay_info_insert(relay_info_create(round, 1, relay.addr2, relay.clout2, relay.rate1), &relay_list);
+		}
+		if (relay.clout3 > 0){
+			struct tr_info * srp = tr_info_find_addr(list, relay.addr3);
+			struct tr_info * by_srp;
+
+			for (by_srp = (srp->nbr_list).next; by_srp != NULL; by_srp = by_srp->next){
+				struct dst_info * dst;
+				dst = dst_info_find_addr(&dst_list, by_srp->addr);
+
+				if (dst->pr_dof == 0)
+					continue;
+				else{
+					unsigned char dof_by_srp = n_to_k(relay.clout3, by_srp->total_num, by_srp->rcv_num[relay.rate3]);
+					dst->pr_dof = dst->pr_dof > dof_by_srp ? dst->pr_dof - dof_by_srp : 0;
+					if(dst->pr_dof == 0)
+						dst->round = round;
+				}
+			}
+			
+			relay_info_insert(relay_info_create(round, 2, relay.addr3, relay.clout3, relay.rate3), &relay_list);
+		}
+		
+		printk("before result\n");
+			
+		used_time_us += cal_tx_time(relay.rate1, relay.clout1, pkt_len); 
+		used_time_us += cal_tx_time(relay.rate2, relay.clout2, pkt_len) >  cal_tx_time(relay.rate3, relay.clout3, pkt_len) ? cal_tx_time(relay.rate2, relay.clout2, pkt_len) : cal_tx_time(relay.rate3, relay.clout3, pkt_len);
+
+		printk("Best relay selection for round %d used_time %d\n", round, used_time_us);	
+		dst_info_list_print(&dst_list);
+		relay_info_list_print(&relay_list);
+		
+		rsc_adjust(&relay_list, &dst_list, round);
+
 	}//end while all zero
+
+	dst_info_list_purge(&dst_list);
+	relay_info_list_purge(&relay_list);
 }
 
 void tl_select_relay(struct tr_info_list *list){
@@ -1449,6 +1544,19 @@ void relay_info_list_init(struct relay_info_list *list){
 	list->qlen = 0;
 }
 
+void dst_info_list_print(struct dst_info_list *list){
+	struct dst_info *test_info = list->next;
+	printk("-------------------------dst_list status---------------------------\n");
+	while(test_info != NULL){
+		printk(KERN_INFO "Addr %x:%x:%x:%x:%x:%x, pr_dof %d, round: %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->pr_dof, test_info->round);
+		test_info = test_info->next;
+		}
+	
+	printk("-----------------------------------------------------------------------\n");
+
+}
+
+
 void tr_info_list_print(struct tr_info_list *list){
 	struct tr_info *test_info = list->next;
 	printk("-------------------------src_nbr_list status---------------------------\n");
@@ -1457,7 +1565,7 @@ void tr_info_list_print(struct tr_info_list *list){
 		printk(KERN_INFO "1hop %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->rssi, test_info->batt, test_info->rcv_num[0], test_info->rcv_num[1], test_info->rcv_num[2], test_info->rcv_num[3], test_info->rcv_num[4], test_info->rcv_num[5], test_info->rcv_num[6], test_info->rcv_num[7],  test_info->rcv_num[8], test_info->rcv_num[9], test_info->rcv_num[10], test_info->rcv_num[11], test_info->total_num, test_info->tf_cnt, test_info->nr_cnt);
 		//printk(KERN_INFO "1-hop addr: %x:%x:%x:%x:%x:%x, total_num = %d, rcv_num = %d, tf_cnt = %d, nr_cnt = %d\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->total_num, test_info->rcv_num, test_info->tf_cnt, test_info->nr_cnt);
 		while(test_src_nbr_info != NULL){
-			printk(KERN_INFO "---> %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_src_nbr_info->addr[0], test_src_nbr_info->addr[1], test_src_nbr_info->addr[2], test_src_nbr_info->addr[3], test_src_nbr_info->addr[4], test_src_nbr_info->addr[5], test_src_nbr_info->rssi, test_src_nbr_info->batt, test_src_nbr_info->rcv_num[0], test_src_nbr_info->rcv_num[1], test_src_nbr_info->rcv_num[2], test_src_nbr_info->rcv_num[3], test_src_nbr_info->rcv_num[4], test_src_nbr_info->rcv_num[5], test_src_nbr_info->rcv_num[6], test_src_nbr_info->rcv_num[7], test_src_nbr_info->rcv_num[8], test_src_nbr_info->rcv_num[9], test_src_nbr_info->rcv_num[10], test_src_nbr_info->rcv_num[11], test_src_nbr_info->total_num, test_src_nbr_info->tf_cnt, test_src_nbr_info->nr_cnt);
+			printk(KERN_INFO "  ---> %x:%x:%x:%x:%x:%x, rssi %d, batt %x, (%d %d %d %d %d %d %d %d %d %d %d %d)/%d, %d, %d\n", test_src_nbr_info->addr[0], test_src_nbr_info->addr[1], test_src_nbr_info->addr[2], test_src_nbr_info->addr[3], test_src_nbr_info->addr[4], test_src_nbr_info->addr[5], test_src_nbr_info->rssi, test_src_nbr_info->batt, test_src_nbr_info->rcv_num[0], test_src_nbr_info->rcv_num[1], test_src_nbr_info->rcv_num[2], test_src_nbr_info->rcv_num[3], test_src_nbr_info->rcv_num[4], test_src_nbr_info->rcv_num[5], test_src_nbr_info->rcv_num[6], test_src_nbr_info->rcv_num[7], test_src_nbr_info->rcv_num[8], test_src_nbr_info->rcv_num[9], test_src_nbr_info->rcv_num[10], test_src_nbr_info->rcv_num[11], test_src_nbr_info->total_num, test_src_nbr_info->tf_cnt, test_src_nbr_info->nr_cnt);
 			test_src_nbr_info = test_src_nbr_info->next;
 		}
 		test_info = test_info->next;
@@ -1467,9 +1575,14 @@ void tr_info_list_print(struct tr_info_list *list){
 }
 
 
-struct relay_info *relay_info_create(void){
+struct relay_info *relay_info_create(unsigned char round, unsigned char type, unsigned char addr[], unsigned char clout, unsigned char rate){
 	struct relay_info *info;
 	info = kmalloc(sizeof(struct relay_info), GFP_ATOMIC);
+	info->round = round;
+	info->type = type;
+	memcpy(info->addr, addr, ETH_ALEN);
+	info->clout = clout;
+	info->rate = rate;
 	info->next = NULL;
 	info->prev = NULL;
 	info->head = NULL;
@@ -1544,3 +1657,161 @@ void relay_info_insert(struct relay_info *newinfo, struct relay_info_list *list)
 	}
 	list->qlen++;
 }
+
+void selected_relay_info_print(struct selected_relay_info *test_info){
+	printk(KERN_INFO "Round: %d (Source  Clout: %d Rate: %d) (Relay1 Addr %x:%x:%x:%x:%x:%x Clout: %d Rate: %d) (SRP Addr %x:%x:%x:%x:%x:%x Clout: %d Rate: %d)\n", test_info->round, test_info->clout1, test_info->rate1, test_info->addr2[0], test_info->addr2[1], test_info->addr2[2], test_info->addr2[3], test_info->addr2[4], test_info->addr2[5], test_info->clout2, test_info->rate2, test_info->addr3[0], test_info->addr3[1], test_info->addr3[2], test_info->addr3[3], test_info->addr3[4], test_info->addr3[5], test_info->clout3, test_info->rate3);
+}
+
+void relay_info_list_print(struct relay_info_list *list){
+	struct relay_info * test_info = list->next;
+	while(test_info != NULL){
+	printk(KERN_INFO "Round: %d Type: %d Addr %x:%x:%x:%x:%x:%x Clout: %d Rate: %d \n", test_info->round, test_info->type, test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->clout, test_info->rate);
+	test_info = test_info->next;
+	}
+}
+
+void rsc_adjust(struct relay_info_list * r_list, struct dst_info_list * d_list, unsigned char round){
+	struct dst_info * d_info = d_list->next;
+	struct relay_info * r_info = r_list->next;
+	struct relay_info * r_info0 = NULL;
+	struct relay_info * r_info1 = NULL;
+	struct relay_info * r_info2 = NULL;
+	struct relay_info *prev_info = r_list->next;
+
+	printk(KERN_INFO "Start Adjustment\n");	
+	// source node intra-adjustment 
+	if (round == 1)
+		return;
+	
+	while(r_info != NULL){
+		if (r_info->round == round && r_info->type == 0){
+			struct relay_info *prev_info = r_list->next;
+			struct relay_info *next_info = r_info->prev;
+
+			while (prev_info != NULL){
+				if (r_info->rate < prev_info->rate && prev_info->type == 0){
+					printk("change\n");
+					if (prev_info == r_list->next){
+						r_list->next = r_info;
+					}
+					else{
+						struct relay_info * prev_prev_info = prev_info->prev; 
+						prev_prev_info->next = r_info;
+						r_info->prev = prev_prev_info;
+					}
+					
+					if (next_info != NULL){
+						next_info->next = r_info->next;
+						if (r_info->next != NULL)
+							r_info->next->prev = next_info;
+					}
+						
+					r_info->next = prev_info;
+					prev_info->prev = r_info;
+
+					break;	
+				}
+				prev_info = prev_info->next; 
+			}
+
+		}
+		if (r_info->round == round && r_info->type != 0){
+			struct relay_info *prev_info = r_list->next;
+			struct relay_info *next_info = r_info->prev;
+
+			while (prev_info != NULL){
+				if (r_info->rate < prev_info->rate && prev_info->type !=0){
+					printk("change\n");
+					if (prev_info == r_list->next){
+						r_list->next = r_info;
+					}
+					else{
+						struct relay_info * prev_prev_info = prev_info->prev; 
+						prev_prev_info->next = r_info;
+						r_info->prev = prev_prev_info;
+					}
+					
+					if (next_info != NULL){
+						next_info->next = r_info->next;
+						if (r_info->next != NULL)
+							r_info->next->prev = next_info;
+					}
+						
+					r_info->next = prev_info;
+					prev_info->prev = r_info;
+
+					break;	
+				}
+				prev_info = prev_info->next; 
+			}
+		}
+	
+		r_info = r_info->next;		
+	}	
+
+#if 0	
+	while(r_info != NULL){
+		if (r_info->round == round && r_info->type == 0)
+			r_info0 = r_info;
+		else if (r_info->round == round && r_info->type == 1)
+			r_info1 = r_info;
+		else if (r_info->round == round && r_info->type == 2)
+			r_info2 = r_info;
+	
+		r_info = r_info->next;		
+	}	
+
+	if (r_info0 != NULL){
+		while (prev_info != NULL){
+			if (r_info0->rate < prev_info->rate || prev_info->type !=0){
+				printk("change\n");
+				if (prev_info == r_list->next){
+					r_list->next = r_info0;
+				}
+				else{
+					struct relay_info * prev_prev_info = prev_info->prev; 
+					prev_prev_info->next = r_info0;
+				}
+
+				prev_info->next = r_info->next;
+				r_info0->next = prev_info;
+				prev_info->prev = r_info0;
+
+				break;	
+			}
+			prev_info = prev_info->next; 
+		}
+	}
+
+	prev_info = r_list->next;
+
+	if (r_info1 != NULL){
+		while (prev_info != NULL){
+			if (r_info1->rate < prev_info->rate && prev_info->type !=0){
+				printk("change\n");
+				if (prev_info == r_list->next){
+					r_list->next = r_info1;
+				}
+				else{
+					struct relay_info * prev_prev_info = prev_info->prev; 
+					prev_prev_info->next = r_info1;
+				}
+
+				prev_info->next = r_info1->next;
+				r_info1->next = prev_info;
+				prev_info->prev = r_info1;
+
+				break;	
+			}
+			prev_info = prev_info->next; 
+		}
+	}	
+#endif
+
+	relay_info_list_print(r_list);
+	// end of source txrsc re-order
+
+	
+		
+}
+
