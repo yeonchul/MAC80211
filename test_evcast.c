@@ -6,7 +6,7 @@
 int init_module(void)
 {
 	unsigned char i=0;
-	unsigned char total_n = 10;
+	unsigned char total_n = 20;
 	unsigned char n_hop1 = 5;
 	unsigned char max_hop2 = 5;
 	unsigned char batt_src = 0;

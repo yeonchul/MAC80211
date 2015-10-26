@@ -105,6 +105,7 @@ struct relay_info{
 	unsigned char addr[ETH_ALEN];
 	unsigned char clout;
 	unsigned char rate;
+	unsigned int offset;
 	struct relay_info *next;
 	struct relay_info *prev;
 	struct relay_info_list *head;
@@ -116,6 +117,9 @@ struct relay_info_list{
 };
 
 unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len);
+unsigned char get_n_to_k_table(unsigned char n, unsigned char p);
+unsigned char get_k_to_n_table(unsigned char k, unsigned char p);
+
 /*
 unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len){
 	unsigned int rate=0;	
@@ -146,7 +150,7 @@ struct tr_info *tr_info_find_addr(struct tr_info_list *list, unsigned char addr[
 bool tr_info_check_nr_cnt(struct tr_info_list *list);
 
 void dst_info_list_init(struct dst_info_list *list);
-struct dst_info *dst_info_create(unsigned char addr[], unsigned char pr_dof);
+struct dst_info *dst_info_create(unsigned char addr[], unsigned char pr_dof, unsigned char round);
 void dst_info_list_purge(struct dst_info_list *list);
 void dst_info_free(struct dst_info *info);
 void dst_info_insert(struct dst_info *newinfo, struct dst_info_list *list);
@@ -170,12 +174,13 @@ void trinfo_print(struct tr_info *info);
 void tr_info_list_print(struct tr_info_list *list);
 void dst_info_list_print(struct dst_info_list *list);
 void relay_info_list_print(struct relay_info_list *list);
-void rsc_adjust(struct relay_info_list * r_list, struct dst_info_list * d_list, unsigned char round);
+unsigned int rsc_adjust(struct relay_info_list * r_list, struct dst_info_list * d_list, struct tr_info_list * t_list, unsigned char round);
 unsigned int get_tot_rcv(struct tr_info* info);
 unsigned char set_batt(unsigned char status, unsigned char capacity);
 unsigned char get_capa(unsigned char batt);
 unsigned char get_charge(unsigned char batt);
 void evcast_relay(struct tr_info_list * list, unsigned char batt_src);
-
-
+void assign_offset(struct relay_info_list * r_list, struct tr_info_list * t_list);
+unsigned int calc_total_time(struct relay_info_list * list, unsigned char addr[]);
+void selected_relay_info_print(struct selected_relay_info * info);
 #endif
