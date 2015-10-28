@@ -53,14 +53,13 @@ bool tl_start_check(struct sk_buff *skb){
 		tr_info_list_purge(&src_nbr_list);
 		relay_info_list_purge(&relay_list);
 		dst_info_list_purge(&dst_list);
-
 		
 		test_relay();
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 	
-		return false;
-		tl_mcs_send_timer_func(0);
+		return true;
+		//tl_mcs_send_timer_func(0);
 
 	}
 	return true;
@@ -452,7 +451,6 @@ struct relay_info_list *get_relay_list(){
 	return &relay_list; 
 }
 
-
 void test_relay(){
 	unsigned char clout = 15;
 	unsigned char rate = 7;
@@ -462,17 +460,22 @@ void test_relay(){
  
 	struct dst_info_list dsts;
 	struct relay_info_list relays;
+
 	struct relay_info * info;
 	struct relay_info * rinfo;
 
+	relay_info_list_init(&relays);
+	dst_info_list_init(&dsts);
+	
+	printk(KERN_INFO "Start Test\n");
+	
 	info = relay_info_create(round, 1, relay_addr, clout, rate);
 	info->offset = 100000;	
 
-	relay_info_list_init(&relays);
 	relay_info_insert(info, &relays);
 
 	dst_info_insert(dst_info_create(child_addr, 0, round), &dsts);
-	
+
 	for (rinfo = relays.next; rinfo != NULL; rinfo = rinfo->next){
 		struct sk_buff * pkt;
 		struct dst_info * dst;
@@ -505,7 +508,6 @@ void test_relay(){
 			dev_queue_xmit(pkt);
 		}
 	}
-	
 	relay_info_list_purge(&relays);
 	dst_info_list_purge(&dsts);
 
