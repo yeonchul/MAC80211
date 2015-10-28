@@ -14,10 +14,14 @@ int init_module(void)
 
 	struct tr_info_list total_list;
 	struct tr_info_list src_list;
+	struct relay_info_list relay;
+	struct dst_info_list dst;
 	struct tr_info * info;
 
 	tr_info_list_init(&total_list);
 	tr_info_list_init(&src_list);
+	relay_info_list_init(&relay);
+	dst_info_list_init(&dst);
 
 	get_random_bytes(&b_v, 1);
 	batt_src = set_batt(b_v%2, (b_v%100)+1);
@@ -141,9 +145,14 @@ int init_module(void)
 
 		
 	printk(KERN_INFO "Start alg\n");
-	evcast_relay(&src_list, batt_src);	
-
-		
+	evcast_relay(&src_list, &relay, &dst, batt_src);	
+	
+	printk(KERN_INFO "\nAlgorithm Result\n");
+	relay_info_list_print(&relay);	
+	dst_info_list_print(&dst);	
+	relay_info_list_purge(&relay);	
+	dst_info_list_purge(&dst);	
+	
 	tr_info_list_purge(&total_list);
 	tr_info_list_purge(&src_list);
 

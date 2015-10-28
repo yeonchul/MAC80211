@@ -11,7 +11,7 @@
 #define TR_SIZE 65 // 14+1+2+4*NUM_MCS
 #define TF_SIZE 1370
 #define SNDTF_SIZE 19
-#define SETRELAY_SIZE 17
+#define SETRELAY_SIZE 17 
 #define TFREQ_SIZE 15
 
 #define MNPRELAY 0
@@ -139,7 +139,7 @@ unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len)
 bool tl_start_check(struct sk_buff *skb);
 void tl_start_time(void);
 struct sk_buff *tl_alloc_skb(struct net_device *dev, unsigned char daddr[], unsigned char saddr[], unsigned int size, enum tr_type type);
-void tl_select_relay(struct tr_info_list *list);
+void tl_select_relay(struct tr_info_list *list, struct relay_info_list *r_list, struct dst_info_list *d_list, unsigned char batt);
 
 void tr_info_list_init(struct tr_info_list *list);
 struct tr_info *tr_info_create(unsigned char addr[], struct net_device *dev, unsigned int total_num, unsigned int rcv_num[], unsigned char rssi, unsigned char batt);
@@ -179,8 +179,12 @@ unsigned int get_tot_rcv(struct tr_info* info);
 unsigned char set_batt(unsigned char status, unsigned char capacity);
 unsigned char get_capa(unsigned char batt);
 unsigned char get_charge(unsigned char batt);
-void evcast_relay(struct tr_info_list * list, unsigned char batt_src);
+void evcast_relay(struct tr_info_list * list, struct relay_info_list * relay_list, struct dst_info_list * dst_list, unsigned char batt_src);
 void assign_offset(struct relay_info_list * r_list, struct tr_info_list * t_list);
 unsigned int calc_total_time(struct relay_info_list * list, unsigned char addr[]);
 void selected_relay_info_print(struct selected_relay_info * info);
+void send_setrelay(void);
+struct relay_info_list *get_relay_list(void);
+
+
 #endif

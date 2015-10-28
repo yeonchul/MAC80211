@@ -46,7 +46,6 @@ netdev_tx_t ieee80211_matrix_network_coding(struct sk_buff *skb, struct net_devi
 		else{
 			return ieee80211_subif_start_xmit(skb, dev);
 		}
-
 	}
 
 	else{
@@ -320,35 +319,57 @@ static void mnc_tx_timer_func(unsigned long data){
 
 netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, unsigned char id){
 	struct sk_buff_head skbs_result;
-	int m;
+	unsigned char m = 0;
 	struct sk_buff *skb_temp;
+	struct relay_info * info;
+	struct relay_info_list * r_list;
+	unsigned char remain_ori = tr_get_data_k();
+	
 	netdev_tx_t ret = NETDEV_TX_OK;
 	netdev_tx_t ret_temp;
 
+	r_list = get_relay_list();
 	skb_queue_head_init(&skbs_result);
 
-	if(tr_get_sys() == 1){
-		// Enqueue K original packets
-		enqueue_skb_original(skbs, P, id, &skbs_result);
-
-		// Make N-K coded packets
-		if(tr_get_data_n() > tr_get_data_k()){
-			for(m = 0; m < tr_get_data_n()-tr_get_data_k(); m++){
-				//printk(KERN_INFO "Make coded %dth packet, id = %x\n", m, id);
+	
+	for (info = r_list->next; info !=NULL; info = info->next){
+		if (info->type != 0)
+			continue;
+		
+		if(tr_get_sys() == 1){
+			if (info->clout < remain_ori){
+				remain_ori -= info->clout;
+				continue;
+			}			
+			else {
+				unsigned char num = info->clout - remain_ori;
+				
+				remain_ori = 0;	
+				enqueue_skb_original(skbs, P, id, &skbs_result);
+				
+				for (m = 0; m < num; m++){
+					skb_temp = make_skb_new(skbs, P, id);
+					if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
+					else{ 
+						//set mcs in this line 
+						struct ieee80211_tx_info *tx_info = IEEE80211_SKB_CB(skb_temp);
+						tx_info->control.rates[0].idx = info->rate;
+						skb_queue_tail(&skbs_result, skb_temp);
+					}
+				} 
+			} // should be revisited			
+		}
+		else{
+			for(m = 0; m < info->clout; m++){
+				//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
 				skb_temp = make_skb_new(skbs, P, id);
 				if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
-				else skb_queue_tail(&skbs_result, skb_temp);
+				else{
+					struct ieee80211_tx_info *tx_info = IEEE80211_SKB_CB(skb_temp);
+					tx_info->control.rates[0].idx = info->rate;
+					skb_queue_tail(&skbs_result, skb_temp);
+				}
 			}
-		}
-	}
-
-	else{
-		// Make N coded packets
-		for(m = 0; m < tr_get_data_n(); m++){
-			//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
-			skb_temp = make_skb_new(skbs, P, id);
-			if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
-			else skb_queue_tail(&skbs_result, skb_temp);
 		}
 	}
 	

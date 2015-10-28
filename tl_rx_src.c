@@ -4,6 +4,8 @@
 #include <net/mac80211.h>
 
 static struct tr_info_list src_nbr_list;
+static struct relay_info_list relay_list;
+static struct dst_info_list dst_list;
 
 static struct timer_list tl_rx_tr1_timer;
 static struct timer_list tl_rx_sndtf_timer;
@@ -13,31 +15,15 @@ static void tl_rx_tr1_timer_func(unsigned long data);
 static void tl_rx_sndtf_timer_func(unsigned long data);
 static void tl_mcs_send_timer_func(unsigned long data);
 
-
 static bool polling_state = false;
 static unsigned char polling_addr[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
 static unsigned char multicast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
 
 static unsigned int last_tr_id = 0;
 
 static struct net_device * dev_send;
-/*
-unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len){
-	unsigned int rate=0;	
-	unsigned int len_psdu = len - 12 + 30;	
+static unsigned char src_batt = 0xe4;
 
-	if (WLAN_MODE){
-		rate = rate11a[mcs];	
-		return ((36+(((len_psdu*8+22)/rate)/4)*4)+103)*num;
-	}
-	else{
-		rate = rate11g[mcs];	
-		return ((192+((len_psdu*8)/rate))+103)*num;
-	}
-		
-}
-*/
 bool tl_start_check(struct sk_buff *skb){
 	unsigned char *port = skb_transport_header(skb);
 	unsigned char *data = skb->data + 42;
@@ -65,6 +51,8 @@ bool tl_start_check(struct sk_buff *skb){
 		dev_send = skb->dev;
 		tr_set_param(true, data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5]);
 		tr_info_list_purge(&src_nbr_list);
+		relay_info_list_purge(&relay_list);
+		dst_info_list_purge(&dst_list);
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 
@@ -130,10 +118,7 @@ static void tl_mcs_send_timer_func(unsigned long data){
 		
 		mcs = 0;
 	}
-
 }
-
-
 
 static void tl_rx_sndtf_timer_func(unsigned long data){
 	struct tr_info *info = (struct tr_info *) data;
@@ -160,7 +145,8 @@ static void tl_rx_sndtf_timer_func(unsigned long data){
 	if(tr_info_check_nr_cnt(&src_nbr_list)){
 		polling_state = false;
 		printk("Relay Selection Start\n");
-		tl_select_relay(&src_nbr_list);
+		tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+		send_setrelay();
 	}
 	else{
 		tl_rx_tr1_timer_func(0);
@@ -210,7 +196,8 @@ static void tl_rx_tr1_timer_func(unsigned long data){
 				if(tr_info_check_nr_cnt(&src_nbr_list)){
 					polling_state = false;
 					printk("Relay Selection Start\n");
-					tl_select_relay(&src_nbr_list);
+					tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+					send_setrelay();
 					return;
 				}
 			}
@@ -232,8 +219,9 @@ void tl_receive_skb_src(struct sk_buff *skb){
 	if(for_src_init == true){
 		setup_timer(&tl_rx_tr1_timer, &tl_rx_tr1_timer_func, 0);
 		tr_info_list_init(&src_nbr_list);
+		relay_info_list_init(&relay_list);
+		dst_info_list_init(&dst_list);
 	
-		
 		for_src_init = false;
 	}
 	
@@ -329,7 +317,8 @@ void tl_receive_skb_src(struct sk_buff *skb){
 							if(tr_info_check_nr_cnt(&src_nbr_list)){
 								polling_state = false;
 								printk("Relay Selection Start\n");
-								tl_select_relay(&src_nbr_list);
+								tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+								send_setrelay();
 							}
 							else{
 								tl_rx_tr1_timer_func(0);
@@ -413,6 +402,49 @@ void send_tfreq(char *addr)
 		dev_queue_xmit(otf);
 }
 
+void send_setrelay(){
+	struct relay_info * rinfo;
+	
+	for (rinfo = relay_list.next; rinfo != NULL; rinfo = rinfo->next){
+		struct sk_buff * pkt;
+		struct dst_info * dst;
+		unsigned int size = 0;
+		unsigned char n_child = 0;
 
+		if (rinfo->type == 0)
+			continue;
 
+		for (dst = dst_list.next; dst != NULL; dst = dst->next){
+			if (dst->round == rinfo->round)
+				n_child++; 
+		}
+		size = ETHERHEADLEN + 9 + 6*n_child;		
+		pkt = tl_alloc_skb(dev_send, rinfo->addr, dev_send->dev_addr, size, SetRelay);
+
+		if(pkt != NULL){
+			unsigned int i = 0;
+			pkt->data[ETHERHEADLEN + 1] = tr_get_data_k();
+			pkt->data[ETHERHEADLEN + 2] = rinfo->clout;
+			pkt->data[ETHERHEADLEN + 3] = rinfo->rate;
+			pkt->data[ETHERHEADLEN + 4] = (rinfo->offset >> 24) & 0xff;
+			pkt->data[ETHERHEADLEN + 5] = (rinfo->offset >> 16) & 0xff;
+			pkt->data[ETHERHEADLEN + 6] = (rinfo->offset >> 8) & 0xff;
+			pkt->data[ETHERHEADLEN + 7] = rinfo->offset & 0xff;
+			pkt->data[ETHERHEADLEN + 8] = n_child;
+
+			for (dst = dst_list.next; dst != NULL; dst = dst->next){
+				if (dst->round == rinfo->round){
+					memcpy(&(pkt->data[ETHERHEADLEN + 9 + i]), dst->addr, ETH_ALEN);
+					i += ETH_ALEN;
+				}
+			}	
+
+			dev_queue_xmit(pkt);
+		}
+	}
+}
+
+struct relay_info_list *get_relay_list(){
+	return &relay_list; 
+}
 
