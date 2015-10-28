@@ -2048,7 +2048,9 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 	struct sta_info *dsta;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 	char sig=0;
+	unsigned char mcs = 0;	
 	sig = status->signal;	
+	mcs = status->rate_idx;	
 	
 	dev->stats.rx_packets++;
 	dev->stats.rx_bytes += rx->skb->len;
@@ -2121,7 +2123,7 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 		//	napi_gro_receive(rx->local->napi, skb);
 		//else
 		//	netif_receive_skb(skb);
-			decoding_try(skb,sig);
+			decoding_try(skb, sig, mcs);
 	}
 
 	if (xmit_skb) {

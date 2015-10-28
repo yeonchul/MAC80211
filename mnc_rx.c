@@ -37,7 +37,7 @@ void skb_decoding_sys(struct sk_buff *skb){
 	skb_pull(skb, 3);
 }
 
-void decoding_try(struct sk_buff *skb, char rssi)
+void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 {
 	static struct mnc_queue_head list;
 	u16 ethertype;
@@ -84,7 +84,7 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		}
 		
 		if(tr_get_src()) tl_receive_skb_src(skb);
-		else tl_receive_skb_dst(skb, rssi);
+		else tl_receive_skb_dst(skb, rssi, mcs);
 		return;
 	}
 	else{

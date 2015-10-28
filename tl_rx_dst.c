@@ -233,7 +233,7 @@ static void tl_rx_tf2_timer_func(unsigned long data){
 		printk("Fail in tl_alloc_skb!!\n");
 	}
 }
-void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
+void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 	enum tr_type skb_type = skb->data[0];
 
 	unsigned char *skb_daddr = skb_mac_header(skb);

@@ -24,7 +24,7 @@
 #define FB_PERIOD 100 // in millisecond
 
 void tl_receive_skb_src(struct sk_buff *skb);
-void tl_receive_skb_dst(struct sk_buff *skb, char rssi);
+void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs);
 void init_runtime(void);
 void update_rssi(struct sk_buff *skb, char rssi);
 void send_bnack(unsigned char *dest_addr);
