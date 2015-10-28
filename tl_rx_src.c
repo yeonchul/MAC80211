@@ -54,8 +54,12 @@ bool tl_start_check(struct sk_buff *skb){
 		relay_info_list_purge(&relay_list);
 		dst_info_list_purge(&dst_list);
 
-		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
+		
+		test_relay();
 
+		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
+	
+		return false;
 		tl_mcs_send_timer_func(0);
 
 	}
@@ -448,3 +452,61 @@ struct relay_info_list *get_relay_list(){
 	return &relay_list; 
 }
 
+
+void test_relay(){
+	unsigned char clout = 15;
+	unsigned char rate = 7;
+	unsigned char round = 2;
+	unsigned char relay_addr[6] = {0xa,0xa,0xa,0xa,0xa,0xa};
+	unsigned char child_addr[6] = {0xb,0xb,0xb,0xb,0xb,0xb};
+ 
+	struct dst_info_list dsts;
+	struct relay_info_list relays;
+	struct relay_info * info;
+	struct relay_info * rinfo;
+
+	info = relay_info_create(round, 1, relay_addr, clout, rate);
+	info->offset = 100000;	
+
+	relay_info_list_init(&relays);
+	relay_info_insert(info, &relays);
+
+	dst_info_insert(dst_info_create(child_addr, 0, round), &dsts);
+	
+	for (rinfo = relays.next; rinfo != NULL; rinfo = rinfo->next){
+		struct sk_buff * pkt;
+		struct dst_info * dst;
+		unsigned int size = 0;
+		unsigned char n_child = 1;
+
+		if (rinfo->type == 0)
+			continue;
+
+		size = ETHERHEADLEN + 9 + 6*n_child;		
+		pkt = tl_alloc_skb(dev_send, rinfo->addr, dev_send->dev_addr, size, SetRelay);
+
+		if(pkt != NULL){
+			unsigned int i = 0;
+			pkt->data[ETHERHEADLEN + 1] = 10;
+			pkt->data[ETHERHEADLEN + 2] = rinfo->clout;
+			pkt->data[ETHERHEADLEN + 3] = rinfo->rate;
+			pkt->data[ETHERHEADLEN + 4] = (rinfo->offset >> 24) & 0xff;
+			pkt->data[ETHERHEADLEN + 5] = (rinfo->offset >> 16) & 0xff;
+			pkt->data[ETHERHEADLEN + 6] = (rinfo->offset >> 8) & 0xff;
+			pkt->data[ETHERHEADLEN + 7] = rinfo->offset & 0xff;
+			pkt->data[ETHERHEADLEN + 8] = n_child;
+
+			for (dst = dsts.next; dst != NULL; dst = dst->next){
+				if (dst->round == rinfo->round){
+					memcpy(&(pkt->data[ETHERHEADLEN + 9 + i]), dst->addr, ETH_ALEN);
+					i += ETH_ALEN;
+				}
+			}	
+			dev_queue_xmit(pkt);
+		}
+	}
+	
+	relay_info_list_purge(&relays);
+	dst_info_list_purge(&dsts);
+
+}

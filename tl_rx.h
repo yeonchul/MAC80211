@@ -185,6 +185,6 @@ unsigned int calc_total_time(struct relay_info_list * list, unsigned char addr[]
 void selected_relay_info_print(struct selected_relay_info * info);
 void send_setrelay(void);
 struct relay_info_list *get_relay_list(void);
-
+void test_relay(void);
 
 #endif
