@@ -56,7 +56,7 @@ int init_module(void)
 	
 			if (m == NUM_MCS-1)
 				n_rcv[m] = temp_rcv;
-		
+				
 			else{
 				while(temp_rcv < n_rcv[m+1]){
 					get_random_bytes(&temp_rcv, 4);
@@ -145,7 +145,7 @@ int init_module(void)
 
 		
 	printk(KERN_INFO "Start alg\n");
-	evcast_relay(&src_list, &relay, &dst, batt_src);	
+	vimor_relay(&src_list, &relay, &dst, batt_src);	
 	
 	printk(KERN_INFO "\nAlgorithm Result\n");
 	relay_info_list_print(&relay);	

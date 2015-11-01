@@ -116,6 +116,25 @@ struct relay_info_list{
 	unsigned int qlen;
 };
 
+struct vimor_info_list{
+	struct vimor_info *next;
+	unsigned int qlen;
+};
+
+struct vimor_info{
+	unsigned char addr[ETH_ALEN];
+	unsigned char rate;	
+	unsigned char hop;
+	unsigned int dist;
+	unsigned char parent_addr[ETH_ALEN];
+	struct vimor_info_list child_list;
+	struct vimor_info *next;
+	struct vimor_info *prev;
+	struct vimor_info_list *head;
+};
+
+
+
 unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len);
 unsigned char get_n_to_k_table(unsigned char n, unsigned char p);
 unsigned char get_k_to_n_table(unsigned char k, unsigned char p);
@@ -162,6 +181,15 @@ void relay_info_list_purge(struct relay_info_list *list);
 struct relay_info *relay_info_create(unsigned char round, unsigned char type, unsigned char addr[], unsigned char clout, unsigned char rate);
 void relay_info_free(struct relay_info *info);
 
+void vimor_info_list_init(struct vimor_info_list *list);
+struct vimor_info *vimor_info_create(unsigned char addr[], unsigned char rate, unsigned char hop, unsigned int dist, unsigned char p_addr[]);
+void vimor_info_list_purge(struct vimor_info_list *list);
+void vimor_info_free(struct vimor_info *info);
+void vimor_info_insert(struct vimor_info *newinfo, struct vimor_info_list *list);
+void vimor_info_list_print(struct vimor_info_list *list);
+struct vimor_info *vimor_info_find_addr(struct vimor_info_list *list, unsigned char addr[]);
+
+
 void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n);
 bool tr_get_src(void);
 bool tr_get_sys(void);
@@ -186,5 +214,9 @@ void selected_relay_info_print(struct selected_relay_info * info);
 void send_setrelay(void);
 struct relay_info_list *get_relay_list(void);
 void test_relay(void);
+void vimor_relay(struct tr_info_list * list, struct relay_info_list * relay_list, struct dst_info_list * dst_list, unsigned char type);
+unsigned char find_mcs(struct tr_info * info);
+unsigned int find_ett(struct tr_info * info);
+
 
 #endif

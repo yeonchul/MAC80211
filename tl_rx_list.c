@@ -96,6 +96,19 @@ bool dst_all_zero(struct dst_info_list *list){
 	return true;
 }
 
+bool vimor_all_zero(struct vimor_info_list *list){
+	struct vimor_info * info;
+
+	if (list == NULL) return true;		
+	info = list->next;
+
+	while(info != NULL){
+		if(info->hop == 0) return false;
+		info = info->next;
+	}
+	return true;
+}
+
 unsigned char get_pr_dof(struct dst_info_list *list, unsigned char addr[])
 {
 		struct dst_info * info;
@@ -137,6 +150,59 @@ unsigned char find_best_mcs(struct tr_info * info, unsigned char dof){
 //	printk("Selected MCS: %d\n", ret);
 	return ret;
 }
+
+unsigned char find_mcs(struct tr_info * info){
+	unsigned char i = 0;
+	unsigned int temp_value = 0;
+	unsigned char ret = 0;
+		
+	for(i=0; i<NUM_MCS; i++){
+		unsigned int time = cal_tx_time(i, 1, 1316);
+		unsigned int rcv = info->rcv_num[i];
+		unsigned int value = 0;	
+
+		if (time == 0) 
+			continue;
+
+		value = rcv*1000000/time;	
+		
+		//printk("MCS %d Rcv: %d Time: %d Value: %d\n", i, rcv, time, value);
+		if (value > temp_value)
+		{
+			temp_value = value;
+			ret = i;
+		}
+	}
+	return ret;
+}
+
+unsigned int find_ett(struct tr_info * info){
+	unsigned char i = 0;
+	unsigned int temp_value = 100000000;
+	unsigned char ret = 0;
+		
+	for(i=0; i<NUM_MCS; i++){
+		unsigned int time = cal_tx_time(i, 1, 1316);
+		unsigned int rcv = info->rcv_num[i];
+		unsigned int value = 0;	
+		unsigned int tot = info->total_num;
+
+		if (rcv == 0) 
+			continue;
+
+		value = time*tot/rcv;	
+		
+		//printk("MCS %d Rcv: %d Time: %d Value: %d\n", i, rcv, time, value);
+		if (value < temp_value)
+		{
+			temp_value = value;
+			ret = i;
+		}
+	}
+//	printk("Selected MCS: %d\n", ret);
+	return temp_value;
+}
+
 
 
 void tr_info_list_del_nbr(struct tr_info_list *list, unsigned char addr[]){
@@ -1685,6 +1751,17 @@ void dst_info_list_print(struct dst_info_list *list){
 
 }
 
+void vimor_info_list_print(struct vimor_info_list *list){
+	struct vimor_info *test_info = list->next;
+	printk("-------------------------ViMOR List---------------------------\n");
+	while(test_info != NULL){
+		printk(KERN_INFO "Addr %x:%x:%x:%x:%x:%x, hop: %d rate: %d dist: %d parent: %x:%x:%x:%x:%x:%x\n", test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->hop, test_info->rate, test_info->dist, test_info->parent_addr[0], test_info->parent_addr[1], test_info->parent_addr[2], test_info->parent_addr[3], test_info->parent_addr[4], test_info->parent_addr[5]);
+		test_info = test_info->next;
+		}
+	
+	printk("-----------------------------------------------------------------------\n");
+}
+
 
 void tr_info_list_print(struct tr_info_list *list){
 	struct tr_info *test_info = list->next;
@@ -1798,6 +1875,112 @@ void relay_info_list_print(struct relay_info_list *list){
 	printk(KERN_INFO "Round: %d Type: %d Addr %x:%x:%x:%x:%x:%x Clout: %d Rate: %d Offset: %d\n", test_info->round, test_info->type, test_info->addr[0], test_info->addr[1], test_info->addr[2], test_info->addr[3], test_info->addr[4], test_info->addr[5], test_info->clout, test_info->rate, test_info->offset);
 	test_info = test_info->next;
 	}
+}
+
+void vimor_info_list_init(struct vimor_info_list *list){
+	list->next = NULL;
+	list->qlen = 0;
+}
+
+struct vimor_info *vimor_info_create(unsigned char addr[], unsigned char rate, unsigned char hop, unsigned int dist, unsigned char p_addr[]){
+	struct vimor_info *info;
+	info = kmalloc(sizeof(struct vimor_info), GFP_ATOMIC);
+	memcpy(info->addr, addr, ETH_ALEN);
+	info->rate = rate;
+	info->hop = hop;
+	info->dist = dist;
+	memcpy(info->parent_addr, p_addr, ETH_ALEN);
+	vimor_info_list_init(&(info->child_list));
+	
+	info->next = NULL;
+	info->prev = NULL;
+	info->head = NULL;
+
+	return info;
+}
+
+void vimor_info_list_purge(struct vimor_info_list *list){
+	struct vimor_info *info;
+
+	if(list == NULL) return;
+
+	info = list->next;
+
+	while(info != NULL){
+		vimor_info_free(info);
+		info = list->next;
+	}
+}
+
+void vimor_info_free(struct vimor_info *info){
+	if(info == NULL) return;
+
+	else if(info->head == NULL){
+	}
+
+	else{
+		struct vimor_info *next;
+		struct vimor_info *prev;
+		prev = info->prev;
+		next = info->next;
+
+		if(prev == NULL){
+			if(next == NULL){
+				info->head->next = NULL;
+			}
+			else{
+				info->head->next = next;
+				next->prev = NULL;
+			}
+		}
+		else{
+			if(next == NULL){
+				prev->next = NULL;
+			}
+			else{
+				prev->next = next;
+				next->prev = prev;
+			}
+		}
+		info->head->qlen--;
+	}
+	vimor_info_list_purge(&(info->child_list));
+	kfree(info);
+}
+
+void vimor_info_insert(struct vimor_info *newinfo, struct vimor_info_list *list){
+	struct vimor_info *info;
+
+	newinfo->head = list;
+
+	if((info = list->next) == NULL){
+		list->next = newinfo;
+	}
+
+	else{
+		while(info->next != NULL){
+			info = info->next;
+		}
+
+		info->next = newinfo;
+		newinfo->prev = info;
+	}
+	list->qlen++;
+}
+
+struct vimor_info *vimor_info_find_addr(struct vimor_info_list *list, unsigned char addr[]){
+	struct vimor_info *info;
+
+	if(list == NULL) return NULL;
+
+	if((info = list->next) == NULL) return NULL;
+
+	while(info != NULL){
+		if(!memcmp(info->addr, addr, ETH_ALEN)) return info;
+		info = info->next;
+	}
+
+	return NULL;
 }
 
 unsigned int rsc_adjust(struct relay_info_list * r_list, struct dst_info_list * d_list, struct tr_info_list * t_list, unsigned char round){
@@ -2224,4 +2407,182 @@ unsigned int calc_total_time(struct relay_info_list * list, unsigned char addr[]
 
 	return time;	
 }
+
+void vimor_relay(struct tr_info_list * list, struct relay_info_list * relay_list, struct dst_info_list * dst_list, unsigned char type){
+
+	unsigned char src_addr[6] = {0xa, 0xa, 0xa, 0xa, 0xa, 0xa};
+	struct vimor_info_list vimor_list;
+	struct vimor_info * vimor;
+	struct tr_info * info;
+	unsigned char max_round = 20;
+	unsigned char round = 0;
+	unsigned char src_rate = 12;
+	
+	vimor_info_list_init(&vimor_list);
+	dst_info_list_init(dst_list);
+	relay_info_list_init(relay_list);
+	
+	
+	for(info = list->next; info != NULL; info = info->next){
+		struct tr_info *nbr_info;
+		struct tr_info_list * nbr_info_list = &(info->nbr_list);
+			
+		if(dst_info_find_addr(dst_list, info->addr)==NULL)
+		{
+			unsigned char pr_dof = tr_get_data_k();
+			dst_info_insert(dst_info_create(info->addr, pr_dof, 0), dst_list);
+		}
+		
+		if (vimor_info_find_addr(&vimor_list, info->addr)==NULL){
+			unsigned int ett = find_ett(info);
+			unsigned char rate = find_mcs(info);
+			vimor_info_insert(vimor_info_create(info->addr, rate, 0, ett, src_addr), &vimor_list);
+		}	
+	
+		for(nbr_info = nbr_info_list->next; nbr_info != NULL; nbr_info = nbr_info->next){
+			if(dst_info_find_addr(dst_list, nbr_info->addr) == NULL){
+				unsigned char pr_dof = tr_get_data_k();
+				dst_info_insert(dst_info_create(nbr_info->addr, pr_dof, 0), dst_list);
+			}
+			if (vimor_info_find_addr(&vimor_list, nbr_info->addr)==NULL && tr_info_find_addr(list, nbr_info->addr)==NULL){
+				unsigned char temp_addr[6] = {0};
+				vimor_info_insert(vimor_info_create(nbr_info->addr, 0, 0,  0, temp_addr), &vimor_list);
+			}	
+		}
+	}
+
+	vimor_info_list_print(&vimor_list);
+	//Get DataRate Use pr_dof for indicating Served node
+
+	for(vimor = vimor_list.next; vimor != NULL; vimor = vimor->next){
+		if (vimor->dist == 0){
+			unsigned int ett = 1000000;
+			struct vimor_info * tmp;
+			struct vimor_info * parent = NULL; 
+			for (tmp = vimor_list.next; tmp != NULL; tmp = tmp->next){
+				if (tmp->dist > 0){
+					struct tr_info * hop1 = tr_info_find_addr(list, tmp->addr);
+					struct tr_info * hop2;
+					if (hop1 == NULL)
+						continue;
+					hop2 = tr_info_find_addr(&(hop1->nbr_list), vimor->addr);
+					if (hop2 != NULL){
+						unsigned int temp_ett = tmp->dist + find_ett(hop2);
+						unsigned char temp_rate = find_mcs(hop2);
+						if (temp_ett < ett){
+							vimor->dist = temp_ett;
+							vimor->rate = temp_rate;
+							vimor->hop = 2;
+							memcpy(vimor->parent_addr, tmp->addr, ETH_ALEN);
+							ett = temp_ett;
+							parent = tmp;
+						}
+					}	
+				}		
+			}
+			if (parent == NULL){
+				printk("No parent is assigned\n");
+			}
+			else{
+				vimor_info_insert(vimor_info_create(vimor->addr, vimor->rate, 2, vimor->dist, parent->addr), &(parent->child_list));
+				parent->hop = 1;
+			}
+		}	
+	}	
+	//vimor_info_list_print(&vimor_list);	
+
+	while(!vimor_all_zero(&vimor_list) && round < max_round){
+		struct vimor_info * best_info = NULL;
+		unsigned char best_addr[6] = {0};
+		unsigned char p_addr[6] = {0};
+		unsigned int min_ett = 1000000;
+		unsigned char best_rate = 0;
+		
+	
+		for(vimor = vimor_list.next; vimor != NULL; vimor = vimor->next){
+			if (vimor->hop ==0){
+				unsigned int ett = vimor->dist;
+				struct vimor_info * parent;
+				if ( ett < min_ett ){
+						memcpy(best_addr, vimor->addr, ETH_ALEN);
+						memcpy(p_addr, vimor->parent_addr, ETH_ALEN);
+						best_rate = vimor->rate;
+						min_ett = ett;
+				}
+				for (parent = vimor_list.next; parent != NULL; parent = parent->next){
+					if (parent->hop == 1){
+						struct tr_info * hop1 = tr_info_find_addr(list, parent->addr);
+					 	struct tr_info * hop2;
+						if (hop1 == NULL)
+							continue;
+						hop2 = tr_info_find_addr(&(hop1->nbr_list), vimor->addr);
+						if (hop2 != NULL){
+							unsigned int temp_ett = parent->dist + find_ett(hop2);
+							unsigned char temp_rate = find_mcs(hop2);
+							if (temp_ett < min_ett){
+								memcpy(best_addr, vimor->addr, ETH_ALEN);
+								memcpy(p_addr, parent->addr, ETH_ALEN);
+								best_rate = temp_rate;
+								min_ett = temp_ett;
+							}
+						}	
+					}		
+				}	
+			}	
+		}
+			
+		best_info = vimor_info_find_addr(&vimor_list, best_addr);
+
+		if (best_info != NULL){	
+			if (!memcmp(src_addr, p_addr, ETH_ALEN))
+				best_info->hop = 1;		
+			else{
+				struct vimor_info * parent = vimor_info_find_addr(&vimor_list, p_addr);
+				best_info->dist = min_ett;
+				best_info->rate = best_rate;
+				memcpy(best_info->parent_addr, p_addr, ETH_ALEN);
+				best_info->hop = 2;
+				
+				if (parent != NULL){
+					vimor_info_insert(vimor_info_create(best_info->addr, best_info->rate, 2, best_info->dist, parent->addr), &(parent->child_list));
+					parent->hop = 1;
+				}
+			}
+		}
+		else{
+			printk("Null best info\n");
+			break;	
+		}
+		round++;
+		//printk("Round %d\n", round);
+		//vimor_info_list_print(&vimor_list);	
+	}
+
+
+	for(vimor = vimor_list.next; vimor != NULL; vimor = vimor->next){
+		if (vimor->hop == 1){
+			if (vimor->rate < src_rate)
+				src_rate = vimor->rate;
+			
+			if ((vimor->child_list).qlen > 0){
+				struct vimor_info * info;
+				unsigned char relay_rate = 12;				
+
+				for (info = (vimor->child_list).next; info != NULL; info = info->next){
+					if (info->rate < relay_rate)
+						relay_rate = info->rate;	
+				}
+
+				relay_info_insert(relay_info_create(0, 1, vimor->addr, 10, relay_rate), relay_list);
+			}
+		}	
+	}
+
+	relay_info_insert(relay_info_create(0, 0, src_addr, 10, src_rate), relay_list);
+			
+
+	vimor_info_list_print(&vimor_list);	
+	vimor_info_list_purge(&vimor_list);	
+}
+
 
