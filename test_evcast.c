@@ -51,7 +51,7 @@ int init_module(void)
 		for (m=NUM_MCS-1; m >= 0; m--){
 			unsigned int temp_rcv = 0;
 			get_random_bytes(&temp_rcv, 4);
-			temp_rcv %= num;
+			temp_rcv %= (num - 80);
 			temp_rcv++;		
 	
 			if (m == NUM_MCS-1)
@@ -60,7 +60,7 @@ int init_module(void)
 			else{
 				while(temp_rcv < n_rcv[m+1]){
 					get_random_bytes(&temp_rcv, 4);
-					temp_rcv %= num;
+					temp_rcv %= (num - 20);
 					temp_rcv++;		
 				}	
 				n_rcv[m] = temp_rcv;	
@@ -116,7 +116,7 @@ int init_module(void)
 			for (m=NUM_MCS-1; m >= 0; m--){
 				unsigned int temp_rcv = 0;
 				get_random_bytes(&temp_rcv, 4);
-				temp_rcv %= hop2->total_num;
+				temp_rcv %= (hop2->total_num - 80);
 				temp_rcv++;		
 				
 				if (m == NUM_MCS-1)
@@ -125,7 +125,7 @@ int init_module(void)
 				else{
 					while(temp_rcv < n_rcv[m+1]){
 						get_random_bytes(&temp_rcv, 4);
-						temp_rcv %= hop2->total_num;
+						temp_rcv %= (hop2->total_num - 20);
 						temp_rcv++;		
 					}	
 					n_rcv[m] = temp_rcv;	
@@ -145,7 +145,7 @@ int init_module(void)
 
 		
 	printk(KERN_INFO "Start alg\n");
-	vimor_relay(&src_list, &relay, &dst, batt_src);	
+	vimor_relay(&src_list, &relay, &dst, 0);	
 	
 	printk(KERN_INFO "\nAlgorithm Result\n");
 	relay_info_list_print(&relay);	

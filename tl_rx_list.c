@@ -2417,11 +2417,23 @@ void vimor_relay(struct tr_info_list * list, struct relay_info_list * relay_list
 	unsigned char max_round = 20;
 	unsigned char round = 0;
 	unsigned char src_rate = 12;
-	
+	unsigned int bitrate = 1000000; // in bps
+	unsigned int pkt_size = 1316;
+	unsigned int fps = 30;
+	unsigned int gop = 16;
+	unsigned int t_slot = 0; // in msec
+	unsigned int c1_max = 0;
+	unsigned int gop_pkt = 0;	
+
 	vimor_info_list_init(&vimor_list);
 	dst_info_list_init(dst_list);
 	relay_info_list_init(relay_list);
 	
+
+	gop_pkt = bitrate*gop/fps/pkt_size/8 + 1;
+	t_slot = gop * 10 * 1000 / (gop_pkt * fps);  	
+
+	printk("ViMOR Alg Start Type: %d T_slot: %d\n", type, t_slot); 	
 	
 	for(info = list->next; info != NULL; info = info->next){
 		struct tr_info *nbr_info;
@@ -2579,10 +2591,272 @@ void vimor_relay(struct tr_info_list * list, struct relay_info_list * relay_list
 	}
 
 	relay_info_insert(relay_info_create(0, 0, src_addr, 10, src_rate), relay_list);
-			
-
 	vimor_info_list_print(&vimor_list);	
+	
+	if (type == 0) // ec
+	{
+		unsigned int t1 = cal_tx_time(src_rate, 1, 1316);
+		unsigned int t2_tot = 0;
+		unsigned int c1 = 0;
+		unsigned int c2 = 0;
+		unsigned long min_err = 100000000;
+		unsigned int c1_opt = 0;
+		unsigned int c2_opt = 0;
+		struct relay_info * relay;
+	
+		for (relay = relay_list->next; relay != NULL; relay = relay->next){
+			if (relay->type == 1)	
+				t2_tot += cal_tx_time(relay->rate, 1, 1316); 			
+		}
+		c1_max =  (t_slot*1000 - 10*t2_tot)/t1;
+		if (c1_max < 10){
+			c1 = t_slot*1000 / t1;
+			c2 = 0;
+			
+			for (relay = relay_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0)
+					relay->offset = c1;
+				else
+					relay->offset = 0;
+			}
+		}	
+		else{
+			for (c1 = 10; c1 <= c1_max; c1++){
+				unsigned long temp_err = 0;
+				c2 = (t_slot*1000 - c1*t1) / t2_tot;
+				
+				for (relay = relay_list->next; relay != NULL; relay = relay->next){
+					if (relay->type == 0)
+						relay->offset = c1;
+					else
+						relay->offset = c2;	
+				}
+			
+				temp_err = calc_error_prob(list, relay_list, &vimor_list);
+				
+				if (temp_err < min_err){
+					c1_opt = c1;
+					c2_opt = c2;
+					min_err = temp_err;
+				}
+			}
+			for (relay = relay_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0)
+					relay->offset = c1_opt;
+				else
+					relay->offset = c2_opt;
+			}
+		}
+	} 
+	else if (type == 1){ //ET
+		unsigned int t1 = cal_tx_time(src_rate, 1, 1316);
+		unsigned int t2_max = 0;
+		unsigned int c1 = 0;
+		unsigned int c2 = 0;
+		unsigned long min_err = 100000000;
+		unsigned int c1_opt = 0;
+		unsigned int n_relay = 0;
+		struct relay_info * relay;
+	
+		for (relay = relay_list->next; relay != NULL; relay = relay->next){
+			if (relay->type == 1){	
+				unsigned int t2 = cal_tx_time(relay->rate, 1, 1316); 
+				if (t2 > t2_max){
+					t2_max = t2;
+				}
+				n_relay++;			
+			}
+		}
+		
+		
+		c1_max = (t_slot * 1000 - 10*n_relay*t2_max)/t1;
+		
+		 if (c1_max < 10){
+			c1 = t_slot*1000 / t1;
+			c2 = 0;
+			
+			for (relay = relay_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0)
+					relay->offset = c1;
+				else
+					relay->offset = 0;
+			}
+		}	
+		else{
+			unsigned int i = 0;
+			unsigned int * c2_opt = NULL;
+			
+			if (n_relay > 0)
+				c2_opt = kmalloc(sizeof(unsigned int)*n_relay, GFP_ATOMIC);	
+
+			for (c1 = 10; c1 <= c1_max; c1++){
+				unsigned long temp_err = 0;
+				
+				for (relay = relay_list->next; relay != NULL; relay = relay->next){
+					if (relay->type == 0)
+						relay->offset = c1;
+					else{
+						unsigned int t2 = cal_tx_time(relay->rate, 1, 1316);
+						c2 = (t_slot*1000 - c1*t1) / n_relay / t2;
+						relay->offset = c2;	
+					}
+				}
+			
+				temp_err = calc_error_prob(list, relay_list, &vimor_list);
+				
+				if (temp_err < min_err){
+					i = 0;
+					c1_opt = c1;
+					
+					for (relay = relay_list->next; relay != NULL; relay = relay->next){
+						if (relay->type == 1){
+							c2_opt[i] = relay->offset;
+							i++;
+						}
+					}
+
+					min_err = temp_err;
+				}
+			}
+		
+			i = 0;
+			for (relay = relay_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0)
+					relay->offset = c1_opt;
+				else{
+					relay->offset = c2_opt[i];
+					i++;
+				}
+			}
+			
+			kfree(c2_opt);
+		}		
+	}
+	//error_avg = calc_error_prob(list, relay_list, &vimor_list, 10, 10, src_rate);		
+
 	vimor_info_list_purge(&vimor_list);	
 }
+//VIMOR
+
+unsigned long calc_error_prob (struct tr_info_list * t_list, struct relay_info_list * r_list, struct vimor_info_list * v_list){
+	unsigned long ret = 0;
+	unsigned long scale = 1000000000; // multiplied by 10000
+	struct vimor_info * v_info;
+	struct relay_info * src_info = NULL;
 
 
+	for (src_info = r_list->next; src_info != NULL; src_info = src_info->next){
+		if (src_info->type == 0)
+			break;
+	}
+
+	if (src_info == NULL)
+		return 0;
+
+	for (v_info = v_list->next; v_info != NULL; v_info = v_info->next){
+		unsigned long e_d = scale;
+		struct relay_info * relay;
+	
+		if (v_info->hop == 1){	
+			for (relay = r_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0){
+					struct tr_info * hop1 = tr_info_find_addr(t_list, v_info->addr);
+
+					if (hop1 == NULL){
+						printk("Never occur\n");
+						continue;
+					}
+
+					else{
+						unsigned int tot1 = 0;			
+						unsigned int err1 = 0;
+						unsigned int i = 0;	
+						unsigned long hop1_err = scale;
+
+						tot1 = (unsigned int)hop1->total_num;
+						err1 = tot1 - (unsigned int)hop1->rcv_num[src_info->rate];
+
+						for (i=0; i < src_info->offset; i++){
+							hop1_err = hop1_err * (unsigned long)err1 / (unsigned long)tot1;		
+						}
+
+						e_d = e_d * hop1_err / scale; 
+					}				
+				}
+			}
+		}
+
+		else{	
+			for (relay = r_list->next; relay != NULL; relay = relay->next){
+				if (relay->type == 0){
+					struct tr_info * hop1 = tr_info_find_addr(t_list, v_info->addr);
+
+					if (hop1 == NULL)
+						continue;
+
+					else{
+						unsigned int tot1 = 0;			
+						unsigned int err1 = 0;
+						unsigned int i = 0;	
+						unsigned long hop1_err = scale;
+
+						tot1 = (unsigned int)hop1->total_num;
+						err1 = tot1 - (unsigned int)hop1->rcv_num[src_info->rate];
+
+						for (i=0; i < src_info->offset; i++){
+							hop1_err = hop1_err * (unsigned long)err1 / (unsigned long)tot1;		
+						}
+
+						e_d = e_d * hop1_err / scale; 
+					}				
+				}
+
+				else{
+					struct tr_info * hop1 = tr_info_find_addr(t_list, relay->addr);
+					struct tr_info * hop2;
+
+					if(hop1 == NULL){
+						printk("Never occur!!\n");
+						continue;	
+					}			
+
+					hop2 = tr_info_find_addr(&(hop1->nbr_list), v_info->addr); 
+
+					if (hop2 != NULL){
+						unsigned int tot1 = 0;			
+						unsigned int tot2 = 0;			
+						unsigned int err1 = 0;
+						unsigned int err2 = 0;
+						unsigned int i = 0;	
+						unsigned long hop1_err = scale;
+						unsigned long hop2_err = scale;		
+
+						tot1 = (unsigned int)hop1->total_num;
+						err1 = tot1 - (unsigned int)hop1->rcv_num[src_info->rate];
+
+						tot2 = (unsigned int)hop2->total_num;
+						err2 = tot2 - (unsigned int)hop2->rcv_num[relay->rate];
+
+						for (i=0; i < src_info->offset; i++){
+							hop1_err = hop1_err * (unsigned long)err1 / (unsigned long)tot1;		
+						}
+
+						for (i=0; i < relay->offset; i++){
+							hop2_err = hop2_err * (unsigned long)err2 / (unsigned long)tot2;		
+						}	
+
+						e_d = e_d * (scale - (scale - hop1_err)*(scale - hop2_err)/scale) / scale ;		
+					}	// hop2 is not NULL
+				} //else
+			} // for relay
+		} // vimor type == 2 
+		//printk("Node %x:%x:%x:%x:%x:%x E_d: %ld\n", v_info->addr[0], v_info->addr[1], v_info->addr[2], v_info->addr[3], v_info->addr[4], v_info->addr[5], e_d);
+		
+		ret += e_d;
+	} // for vimor
+//	ret = ret / v_list->qlen;	
+	
+	printk("Average Error Prob with (c1:%d): %ld\n", src_info->offset, ret);
+	
+	return ret;
+}

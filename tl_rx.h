@@ -215,6 +215,7 @@ void send_setrelay(void);
 struct relay_info_list *get_relay_list(void);
 void test_relay(void);
 void vimor_relay(struct tr_info_list * list, struct relay_info_list * relay_list, struct dst_info_list * dst_list, unsigned char type);
+unsigned long calc_error_prob (struct tr_info_list * t_list, struct relay_info_list * r_list, struct vimor_info_list * v_list);
 unsigned char find_mcs(struct tr_info * info);
 unsigned int find_ett(struct tr_info * info);
 
