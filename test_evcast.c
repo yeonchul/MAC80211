@@ -145,7 +145,7 @@ int init_module(void)
 
 		
 	printk(KERN_INFO "Start alg\n");
-	vimor_relay(&src_list, &relay, &dst, 0);	
+	vimor_relay(&src_list, &relay, &dst, 1);	
 	
 	printk(KERN_INFO "\nAlgorithm Result\n");
 	relay_info_list_print(&relay);	
