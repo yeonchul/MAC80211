@@ -22,11 +22,64 @@ static unsigned char last_addr[ETH_ALEN] = {0};
 static unsigned long last_time = 0;
 static struct net_device *rdev = NULL;
 static struct hrtimer relay_hrtimer;
+static unsigned char last_eid = 0;
+static struct mnc_queue_head list;
+static unsigned char last_did[3] = {0, 0, 0};
 
 //static unsigned int out_of_order = 0;
 
 enum hrtimer_restart send_relay_callback(struct hrtimer *timer){
+	struct mnc_queue *mncq;
+	unsigned char k;
+	
 	printk("send_relay_callback called\n");
+	
+	mncq = mnc_queue_head_find_eid(&list, last_eid);
+	if(mncq == NULL){
+		printk("NULL mncq\n");
+		return HRTIMER_NORESTART;
+	}
+	k = mncq->kp >> 2;
+
+	while(true){
+		if(skb_queue_len(&(mncq->skbs)) < k){
+			mnc_queue_free(mncq);
+			break;
+		}
+
+		if(mncq->sys){
+			// printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", eid);
+			mnc_queue_free(mncq);
+		}
+
+		else{
+			struct sk_buff_head newskbs;
+			skb_queue_head_init(&newskbs);
+
+			// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
+			if(skbs_decoding(&(mncq->skbs), &newskbs, mncq->kp)){
+				printk(KERN_INFO "Decoding success! eid: %x, k: %x, p: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_eid, k, mncq->kp & 0x3, last_did[0], last_did[1], last_did[2]);
+				if((tr_get_data_n() > 0) && (!tr_get_src())){
+					mnc_encoding_tx(&newskbs, rdev, last_eid);
+				}
+				while(!skb_queue_empty(&newskbs)){
+					netif_receive_skb(skb_dequeue(&newskbs));
+				}
+
+				// printk(KERN_INFO "Free the queue, eid = %x\n", eid);
+				mnc_queue_free(mncq);
+				//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
+				
+				last_did[2] = last_did[1];
+				last_did[1] = last_did[0];
+				last_did[0] = last_eid;
+				break;
+				
+				//ycshin
+				//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
+			}
+		}
+	}
 
 	return HRTIMER_NORESTART;
 }
@@ -49,7 +102,6 @@ void skb_decoding_sys(struct sk_buff *skb){
 
 void decoding_try(struct sk_buff *skb, char rssi)
 {
-	static struct mnc_queue_head list;
 	u16 ethertype;
 	static int i = 0;
 	unsigned char eid;
@@ -60,11 +112,11 @@ void decoding_try(struct sk_buff *skb, char rssi)
 	int mh_pos;
 	struct mnc_queue *mncq;
 	unsigned long cjiffies;
-	static unsigned char last_did[3] = {0, 0, 0};
 	unsigned char j;
 	bool bnack_trigger = true;
 	static bool runtime = false;
 	ktime_t relay_time;
+	unsigned long remain_time_us;
 
 	rdev = skb->dev;
 	mh_pos = skb_mac_header(skb) - skb->head;
@@ -162,6 +214,32 @@ void decoding_try(struct sk_buff *skb, char rssi)
 			}
 		}
 
+		remain_time_us = cal_tx_time(6, 8 - seq, skb->len);
+		relay_time = ktime_set(0, remain_time_us * 1000 + tr_get_offset() * 1000);
+		printk("remain_time_us = %ld, seq = %d, skb->len = %d\n", remain_time_us, seq, skb->len);
+
+		if(last_eid == eid){
+			int ret = hrtimer_cancel(&relay_hrtimer);
+			if(ret){
+				printk("Receive new seq(%d), reset timer(%ld)\n", seq, remain_time_us);
+				hrtimer_start(&relay_hrtimer, relay_time, HRTIMER_MODE_REL);
+			}
+			else{
+				printk("Error: No hrtimer for eid(%d)\n", eid);
+			}
+		}
+		else{
+			int ret = hrtimer_cancel(&relay_hrtimer);
+			if(ret){
+				printk("Cancel timer, new eid(%d) is received before relay eid(%d)\n", eid, last_did[0]);
+				mncq = mnc_queue_head_find_eid(&list, eid);
+				if(mncq != NULL)
+					mnc_queue_free(mncq);
+			}
+			hrtimer_start(&relay_hrtimer, relay_time, HRTIMER_MODE_REL);
+			last_eid = eid;
+		}
+
 #ifndef TEST_MODULE
 		bnack_trigger = true;
 		
@@ -227,45 +305,6 @@ void decoding_try(struct sk_buff *skb, char rssi)
 		skb_queue_tail(&(mncq->skbs), skb);
 
 		printk(KERN_INFO "eid = %x, k = %x, p = %x, m = %x, seq = %x, cjiffies = %lx, skb->len = %d, skb = %lx\n", eid, k, kp & 0x3, m, seq, cjiffies, skb->len, skb);
-
-		if(skb_queue_len(&(mncq->skbs)) == k){
-			if(mncq->sys){
-				// printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", eid);
-				mnc_queue_free(mncq);
-			}
-
-			else{
-				struct sk_buff_head newskbs;
-				skb_queue_head_init(&newskbs);
-
-				// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
-				if(skbs_decoding(&(mncq->skbs), &newskbs, kp)){
-					printk(KERN_INFO "Decoding success! eid: %x, k: %x, p: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", eid, k, kp & 0x3, last_did[0], last_did[1], last_did[2]);
-					if((tr_get_data_n() > 0) && (!tr_get_src())){
-						mnc_encoding_tx(&newskbs, rdev, eid);
-					}
-					while(!skb_queue_empty(&newskbs)){
-						netif_receive_skb(skb_dequeue(&newskbs));
-					}
-
-					// printk(KERN_INFO "Free the queue, eid = %x\n", eid);
-					mnc_queue_free(mncq);
-					//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
-					// printk(KERN_INFO "Free success!\n");
-					//ycshin
-					//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
-				}
-				else{
-					// printk(KERN_INFO "Decoding fail! eid: %x\n", eid);
-					return;
-				}
-			}
-			last_did[2] = last_did[1];
-			last_did[1] = last_did[0];
-			last_did[0] = eid;
-
-		}
-		//	printk(KERN_INFO "\n");
 	}
 
 }
