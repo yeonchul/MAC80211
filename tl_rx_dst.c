@@ -35,6 +35,10 @@ static struct tr_info_list *rcv_list = NULL;
 
 static unsigned char feedback_counter = 0;
 
+static unsigned char child_name[20][ETH_ALEN];
+static unsigned char n_child;
+
+
 static void tl_rx_tr2_timer_func(unsigned long data){
 	unsigned int qlen;	
 	unsigned int size;
@@ -445,39 +449,54 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 		}
 	}
 
-	else if(skb_type == SetRelay){
-		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
-			unsigned char skb_k = skb->data[1];
-			unsigned char skb_n = skb->data[2];
-			unsigned char mcs = skb->data[3];
-			unsigned int offset = (unsigned int) skb->data[4] << 24 | skb->data[5] << 16 | skb->data[6] << 8 | skb->data[7];
-			unsigned char num_nbr = skb->data[8];
-			unsigned int size;
-			unsigned char i=0;
+		else if(skb_type == SetRelay){
+			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
+				unsigned char skb_k = skb->data[1];
+				unsigned char skb_n = skb->data[2];
+				unsigned char mcs = skb->data[3];
+				unsigned int offset = (unsigned int) skb->data[4] << 24 | skb->data[5] << 16 | skb->data[6] << 8 | skb->data[7];
+				unsigned char i;
 
-			tr_set_param(false, false, skb_k, skb_n, 0, 0, 0, mcs, offset);
-			printk("Receive SetRelay, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d, mcs = %d, offset = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n(), tr_get_mcs(), tr_get_offset());
-			size = (unsigned int) ETHERHEADLEN + 1 + 8 + num_nbr*ETH_ALEN;
-			
-			for (i=0; i<2; i++){
-				struct sk_buff * rpt=tl_alloc_skb(dev_send2, multicast_addr, dev_send2->dev_addr, size, SetRelay);
-				if(rpt != NULL){
-					memcpy(&(rpt->data[ETHERHEADLEN+1]), &(skb->data[1]), size-ETHERHEADLEN-1);
-					dev_queue_xmit(rpt);
-					printk("Relay Relay Assignment Packet\n");
+				n_child = skb->data[8];
+				memcpy(parent_addr, skb_saddr, ETH_ALEN);
+
+				tr_set_param(false, false, skb_k, skb_n, 0, 0, 0, mcs, offset);
+				printk("Receive SetRelay, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d, mcs = %d, offset = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n(), tr_get_mcs(), tr_get_offset());
+
+				if(!(n_child == 0 && skb_n == 0)){
+					for(i = 0; i < n_child; i++){
+						struct sk_buff* rpt;
+						int ii = 9 + i * ETH_ALEN;
+						memcpy(child_name[i], &(skb->data[ii]), ETH_ALEN);
+
+						rpt = tl_alloc_skb(skb->dev, child_name[i], skb->dev->dev_addr, ETHERHEADLEN+9, SetRelay);
+						rpt->data[ETHERHEADLEN + 1] = skb_k;
+						rpt->data[ETHERHEADLEN + 2] = 0;
+						rpt->data[ETHERHEADLEN + 3] = 0;
+						rpt->data[ETHERHEADLEN + 4] = 0;
+						rpt->data[ETHERHEADLEN + 5] = 0;
+						rpt->data[ETHERHEADLEN + 6] = 0;
+						rpt->data[ETHERHEADLEN + 7] = 0;
+						rpt->data[ETHERHEADLEN + 8] = 0;
+						dev_queue_xmit(rpt);
+						printk("Send SetRelay Message(%d); k = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", SetRelay, skb_k, skb->dev->dev_addr[0], skb->dev->dev_addr[1], skb->dev->dev_addr[2], skb->dev->dev_addr[3], skb->dev->dev_addr[4], skb->dev->dev_addr[5], child_name[i][0], child_name[i][1], child_name[i][2], child_name[i][3], child_name[i][4], child_name[i][5]);
+					}
 				}
-				else{
-					printk("Fails to alloc skb\n");
+
+				printk("My parent = %x:%x:%x:%x:%x:%x\n", parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5]);
+				for(i = 0; i < n_child; i++){
+					printk("Child[%d][] = %x:%x:%x:%x:%x:%x\n", i, child_name[i][0], child_name[i][1], child_name[i][2], child_name[i][3], child_name[i][4], child_name[i][5]);
 				}
 			}
-		}
+
+		/****** It may be unicast frame *******
 		else if(!memcmp(skb_daddr, multicast_addr, ETH_ALEN)){
 			if (tr_get_data_n() == 0){
-				unsigned char num_nbr = skb->data[8];
+				unsigned char n_child = skb->data[8];
 				unsigned char i=0;
 				unsigned char j=0;
 
-				for (i=0; i<num_nbr; i++){
+				for (i=0; i<n_child; i++){
 					j = 9 + i*ETH_ALEN;
 					if(!memcmp(dev_send2->dev_addr, &(skb->data[j]), ETH_ALEN)){
 						memcpy(parent_addr, skb_saddr, ETH_ALEN);
@@ -486,6 +505,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 				}
 			}
 		}
+		*/
 	}
 	else if(skb_type == TF_REQ){
 		struct sk_buff *rpt; 
