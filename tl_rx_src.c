@@ -452,11 +452,11 @@ struct relay_info_list *get_relay_list(){
 }
 
 void test_relay(){
-	unsigned char clout = 15;
-	unsigned char rate = 7;
+	unsigned char clout = 6;
+	unsigned char rate = 8;
 	unsigned char round = 2;
-	unsigned char relay_addr[6] = {0xa,0xa,0xa,0xa,0xa,0xa};
-	unsigned char child_addr[6] = {0xb,0xb,0xb,0xb,0xb,0xb};
+	unsigned char relay_addr[6] = {0xc8,0xf7,0x33,0x92,0x76,0x9c};
+	unsigned char child_addr[6] = {0xc8,0xf7,0x33,0xa9,0xf6,0xdd};
  
 	struct dst_info_list dsts;
 	struct relay_info_list relays;
@@ -470,7 +470,7 @@ void test_relay(){
 	printk(KERN_INFO "Start Test\n");
 	
 	info = relay_info_create(round, 1, relay_addr, clout, rate);
-	info->offset = 100000;	
+	info->offset = 1000;	
 
 	relay_info_insert(info, &relays);
 
@@ -490,7 +490,7 @@ void test_relay(){
 
 		if(pkt != NULL){
 			unsigned int i = 0;
-			pkt->data[ETHERHEADLEN + 1] = 10;
+			pkt->data[ETHERHEADLEN + 1] = 5;
 			pkt->data[ETHERHEADLEN + 2] = rinfo->clout;
 			pkt->data[ETHERHEADLEN + 3] = rinfo->rate;
 			pkt->data[ETHERHEADLEN + 4] = (rinfo->offset >> 24) & 0xff;
