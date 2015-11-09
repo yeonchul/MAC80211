@@ -14,12 +14,75 @@
 #define ETHERLEN 14
 #define IS_RUN 1
 
+#define TEST_MODULE
+
 static struct timer_list bnack_timer;
 static void bnack_func(unsigned long data);
 static unsigned char last_addr[ETH_ALEN] = {0};
 static unsigned long last_time = 0;
+static struct net_device *rdev = NULL;
+static struct hrtimer relay_hrtimer;
+static unsigned char last_eid = 0;
+static struct mnc_queue_head list;
+static unsigned char last_did[3] = {0, 0, 0};
 
 //static unsigned int out_of_order = 0;
+
+enum hrtimer_restart send_relay_callback(struct hrtimer *timer){
+	struct mnc_queue *mncq;
+	unsigned char k;
+	
+	printk("send_relay_callback called\n");
+	
+	mncq = mnc_queue_head_find_eid(&list, last_eid);
+	if(mncq == NULL){
+		printk("NULL mncq\n");
+		return HRTIMER_NORESTART;
+	}
+	k = mncq->kp >> 2;
+
+	while(true){
+		if(skb_queue_len(&(mncq->skbs)) < k){
+			mnc_queue_free(mncq);
+			break;
+		}
+
+		if(mncq->sys){
+			// printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", eid);
+			mnc_queue_free(mncq);
+		}
+
+		else{
+			struct sk_buff_head newskbs;
+			skb_queue_head_init(&newskbs);
+
+			// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
+			if(skbs_decoding(&(mncq->skbs), &newskbs, mncq->kp)){
+				printk(KERN_INFO "Decoding success! eid: %x, k: %x, p: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_eid, k, mncq->kp & 0x3, last_did[0], last_did[1], last_did[2]);
+				if((tr_get_data_n() > 0) && (!tr_get_src())){
+					mnc_encoding_tx(&newskbs, rdev, last_eid);
+				}
+				while(!skb_queue_empty(&newskbs)){
+					netif_receive_skb(skb_dequeue(&newskbs));
+				}
+
+				// printk(KERN_INFO "Free the queue, eid = %x\n", eid);
+				mnc_queue_free(mncq);
+				//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
+				
+				last_did[2] = last_did[1];
+				last_did[1] = last_did[0];
+				last_did[0] = last_eid;
+				break;
+				
+				//ycshin
+				//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
+			}
+		}
+	}
+
+	return HRTIMER_NORESTART;
+}
 
 void skb_decoding_sys(struct sk_buff *skb){
 	int mh_pos = skb_mac_header(skb) - skb->data;
@@ -39,22 +102,23 @@ void skb_decoding_sys(struct sk_buff *skb){
 
 void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 {
-	static struct mnc_queue_head list;
 	u16 ethertype;
 	static int i = 0;
 	unsigned char eid;
 	unsigned char kp;
 	unsigned int k;
 	unsigned char m;
+	unsigned char seq;
 	int mh_pos;
 	struct mnc_queue *mncq;
 	unsigned long cjiffies;
-	static unsigned char last_did[3] = {0, 0, 0};
 	unsigned char j;
-	struct net_device *rdev = skb->dev;
 	bool bnack_trigger = true;
 	static bool runtime = false;
+	ktime_t relay_time;
+	unsigned long remain_time_us;
 
+	rdev = skb->dev;
 	mh_pos = skb_mac_header(skb) - skb->head;
 	ethertype = (skb->head[mh_pos+12]<<8) | skb->head[mh_pos+13];
 
@@ -63,13 +127,13 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 		return;
 	}
 	else if(ethertype == 0x0811){
-//		printk(KERN_INFO "Decode packet! ethertype: %x\n", ethertype);
+		//printk(KERN_INFO "Decode packet! ethertype: %x\n", ethertype);
 		//dev_kfree_skb(skb);
 		skb_linearize(skb);
 		
+#ifndef TEST_MODULE
 		if(runtime){
 			printk(KERN_INFO "Runtime Control packet! ethertype: %x\n", ethertype);
-			//gjlee
 			
 			if(!tr_get_src()){
 				update_rssi(skb, rssi);
@@ -82,20 +146,22 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 				printk("rssi = %d > -80, last_addr = %x:%x:%x:%x:%x:%x, last_time = %ld\n", rssi, last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], last_time);
 			}
 		}
+#endif
 		
 		if(tr_get_src()) tl_receive_skb_src(skb);
 		else tl_receive_skb_dst(skb, rssi, mcs);
 		return;
 	}
 	else{
-//		printk("Data decoding start\n");
-//		netif_receive_skb(skb);
+		//printk("Data decoding start\n");
+		//netif_receive_skb(skb);
 		skb->head[mh_pos+12]=0x08;
 		skb->head[mh_pos+13]=0x00;
 		skb->protocol = 0x0008;
 
 		skb_linearize(skb);
 		
+#ifndef TEST_MODULE
 		if(!tr_get_src()){
 			update_rssi(skb, rssi);
 		}
@@ -106,31 +172,37 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 			last_time = jiffies; 
 			printk("rssi = %d > -80, last_addr = %x:%x:%x:%x:%x:%x, last_time = %ld\n", rssi, last_addr[0], last_addr[1], last_addr[2], last_addr[3], last_addr[4], last_addr[5], last_time);
 		}
+#endif
 
 		if(i == 0){
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
 			
+#ifndef TEST_MODULE
 			if(IS_RUN){
 				runtime = true;
 			}
 			
 			setup_timer(&bnack_timer, &bnack_func, 0);
 			mod_timer(&bnack_timer, jiffies + BNACK_TIMEOUT);
+#endif
 			i = 1;
+			hrtimer_init(&relay_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+			relay_hrtimer.function = &send_relay_callback;
 		}
 
+#ifndef TEST_MODULE
 		init_runtime();
+#endif
 
 		cjiffies = jiffies;
 		eid = skb->data[1];
 		kp = skb->data[0];
 		k = kp >> 2;
 		m = (skb->data[2] >> 2);
+		seq = skb->data[3];
 
 		mnc_queue_head_check_etime(&list, cjiffies);
-
-		//ycshin: should be modified
 
 		//printk(KERN_INFO "last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_did[0], last_did[1], last_did[2]);
 
@@ -142,6 +214,33 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 			}
 		}
 
+		remain_time_us = cal_tx_time(6, 8 - seq, skb->len);
+		relay_time = ktime_set(0, remain_time_us * 1000 + tr_get_offset() * 1000);
+		printk("remain_time_us = %ld, seq = %d, skb->len = %d\n", remain_time_us, seq, skb->len);
+
+		if(last_eid == eid){
+			int ret = hrtimer_cancel(&relay_hrtimer);
+			if(ret){
+				printk("Receive new seq(%d), reset timer(%ld)\n", seq, remain_time_us);
+				hrtimer_start(&relay_hrtimer, relay_time, HRTIMER_MODE_REL);
+			}
+			else{
+				printk("Error: No hrtimer for eid(%d)\n", eid);
+			}
+		}
+		else{
+			int ret = hrtimer_cancel(&relay_hrtimer);
+			if(ret){
+				printk("Cancel timer, new eid(%d) is received before relay eid(%d)\n", eid, last_did[0]);
+				mncq = mnc_queue_head_find_eid(&list, eid);
+				if(mncq != NULL)
+					mnc_queue_free(mncq);
+			}
+			hrtimer_start(&relay_hrtimer, relay_time, HRTIMER_MODE_REL);
+			last_eid = eid;
+		}
+
+#ifndef TEST_MODULE
 		bnack_trigger = true;
 		
 		for(j = 0; j < 3; j++){
@@ -160,37 +259,6 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 					break;
 				}
 			}
-
-			/*
-			else if(eid == 1){
-				if(!(last_did[j] == 255 || last_did[j] == 254 || last_did[j] == 253)){
-					bnack_trigger = false;
-					break;
-				}
-			}
-			else if(eid == 2){
-				if(!(last_did[j] == 1 || last_did[j] == 255 || last_did[j] == 254)){
-					bnack_trigger = true;
-				}
-			}
-			else if(eid == 3){
-				if(!(last_did[j] == 2 || last_did[j] == 1 || last_did[j] == 255)){
-					bnack_trigger = true;
-				}
-			}
-			else{
-				if(eid - last_did[j] > 3){
-					bnack_trigger = true;
-				}
-			}
-			*/
-
-			//ycshin
-			/*	
-					if(!(eid > last_did[j]+2 && last_did[j] < 254 && last_did[j]!=0)){
-					bnack_trigger = false;
-					}
-			 */
 		}
 
 		if(last_did[0] == 0 && last_did[1] == 0 && last_did[2] == 0)
@@ -208,16 +276,8 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 		else{
 			mod_timer(&bnack_timer, jiffies + BNACK_TIMEOUT);
 		}
+#endif
 
-		/* ycshin
-			 if(bnack_trigger == true){
-			 unsigned char mcast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
-			 if(jiffies-last_time > BNACK_TIMEOUT && last_addr!=NULL)
-			 send_bnack(last_addr);
-			 else
-			 send_bnack(mcast_addr);
-			 }
-		 */
 		mncq = mnc_queue_head_find_eid(&list, eid);
 
 		if(mncq == NULL){
@@ -244,46 +304,7 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 
 		skb_queue_tail(&(mncq->skbs), skb);
 
-		// printk(KERN_INFO "eid = %x, kp = %x, m = %x, cjiffies = %lx, skb = %lx\n", eid, kp, m, cjiffies, skb);
-
-		if(skb_queue_len(&(mncq->skbs)) == k){
-			if(mncq->sys){
-				// printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", eid);
-				mnc_queue_free(mncq);
-			}
-
-			else{
-				struct sk_buff_head newskbs;
-				skb_queue_head_init(&newskbs);
-
-				// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
-				if(skbs_decoding(&(mncq->skbs), &newskbs, kp)){
-					printk(KERN_INFO "Decoding success! eid: %x, kp: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", eid, kp, last_did[0], last_did[1], last_did[2]);
-					if((tr_get_data_n() > 0) && (!tr_get_src())){
-						mnc_encoding_tx(&newskbs, rdev, eid);
-					}
-					while(!skb_queue_empty(&newskbs)){
-						netif_receive_skb(skb_dequeue(&newskbs));
-					}
-
-					// printk(KERN_INFO "Free the queue, eid = %x\n", eid);
-					mnc_queue_free(mncq);
-					//printk(KERN_INFO "Out-of-order: %d\n", out_of_order);
-					// printk(KERN_INFO "Free success!\n");
-					//ycshin
-					//mod_timer(&bnack_timer, jiffies+BNACK_TIMEOUT);
-				}
-				else{
-					// printk(KERN_INFO "Decoding fail! eid: %x\n", eid);
-					return;
-				}
-			}
-			last_did[2] = last_did[1];
-			last_did[1] = last_did[0];
-			last_did[0] = eid;
-
-		}
-		//	printk(KERN_INFO "\n");
+		printk(KERN_INFO "eid = %x, k = %x, p = %x, m = %x, seq = %x, cjiffies = %lx, skb->len = %d, skb = %lx\n", eid, k, kp & 0x3, m, seq, cjiffies, skb->len, skb);
 	}
 
 }
@@ -398,7 +419,7 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 	unsigned int k = kp >> 2;
 	unsigned int p = kp & 0x3;
 	unsigned int msize = k*p;
-	unsigned int mncheadsize = 3 + p*p*k;
+	unsigned int mncheadsize = 4 + p*p*k;
 	struct sk_buff *skb[k];
 	struct sk_buff *newskb[k];
 	bool is_sys[k];
@@ -482,7 +503,7 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 				for(m = 0; m < p; m++){
 					mp = m*p;
 					for(n = 0; n < p; n++){
-						coefficient[mrow+m][j+n] = skb[i]->data[3+jp+mp+n];
+						coefficient[mrow+m][j+n] = skb[i]->data[4+jp+mp+n];
 					}
 				}
 			}
@@ -516,7 +537,7 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 		newskb[i] = skb_copy(skb[i], GFP_ATOMIC);
 	}
 
-	len = newskb[0]->len - (is_sys[0] ? 3 : mncheadsize);
+	len = newskb[0]->len - (is_sys[0] ? 4 : mncheadsize);
 
 	// Decode skb and fill newskb
 	skb_substi(msize, k, p, U, L, pivot, skb, newskb, len, mncheadsize, is_sys);

@@ -24,7 +24,7 @@ static struct timer_list mnc_tx_timer;
 static struct net_device *dev_prev;
 
 void cal_data(unsigned char *data, unsigned int p, unsigned char coefficient[][p], unsigned char *data_new);
-struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, unsigned char id);
+struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, unsigned char seq);
 void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, struct sk_buff_head *skbs_result);
 static void mnc_tx_timer_func(unsigned long data);
 
@@ -123,7 +123,7 @@ void cal_data(unsigned char *data, unsigned int p, unsigned char coefficient[][p
 		}
 	}
 }
-struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, unsigned char id){
+struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, unsigned char seq){
 	struct sk_buff *skb;
 	struct sk_buff *skb_new;
 
@@ -136,7 +136,7 @@ struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, un
 	unsigned char coefficient[p][p];
 
 	unsigned int coding_len, skb_len1;
-	unsigned int mnc_hdrlen = p*p*k+3;
+	unsigned int mnc_hdrlen = p*p*k+4;
 
 	int nh_pos, h_pos;
 	
@@ -204,6 +204,7 @@ struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, un
 	*(data_new) = (k << 2) | p;
 	*(data_new+1) = id;
 	*(data_new+2) = (tr_get_src() ? 0xfc : 0xfd);
+	*(data_new+3) = seq;
 	*(data_new-2) = 0x08;
 	*(data_new-1) = 0x10;
 
@@ -223,7 +224,7 @@ struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, un
 		for(i = 0; i < p; i++){
 			for(j = 0; j < p; j++){
 				get_random_bytes(&coefficient[i][j], 1);
-				*(data_new + 3 + l) = coefficient[i][j];
+				*(data_new + 4 + l) = coefficient[i][j];
 				l++;
 			}
 		}
@@ -329,7 +330,7 @@ static void mnc_tx_timer_func(unsigned long data){
 
 netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, unsigned char id){
 	struct sk_buff_head skbs_result;
-	int m;
+	unsigned char m = 0;
 	struct sk_buff *skb_temp;
 	netdev_tx_t ret = NETDEV_TX_OK;
 	netdev_tx_t ret_temp;
@@ -344,7 +345,7 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 		if(tr_get_data_n() > tr_get_data_k()){
 			for(m = 0; m < tr_get_data_n()-tr_get_data_k(); m++){
 				//printk(KERN_INFO "Make coded %dth packet, id = %x\n", m, id);
-				skb_temp = make_skb_new(skbs, P, id);
+				skb_temp = make_skb_new(skbs, P, id, m + tr_get_data_k());
 				if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
 				else skb_queue_tail(&skbs_result, skb_temp);
 			}
@@ -355,9 +356,13 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 		// Make N coded packets
 		for(m = 0; m < tr_get_data_n(); m++){
 			//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
-			skb_temp = make_skb_new(skbs, P, id);
+			skb_temp = make_skb_new(skbs, P, id, m);
 			if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
-			else skb_queue_tail(&skbs_result, skb_temp);
+			else{
+				struct ieee80211_tx_info *tx_info = IEEE80211_SKB_CB(skb_temp);
+				tx_info->control.rates[0].idx = tr_get_mcs();
+				skb_queue_tail(&skbs_result, skb_temp);
+			}
 		}
 	}
 	
