@@ -575,7 +575,7 @@ void test_relay(){
 	
 		relay_info_insert(relay_info_create(rinfo->round, rinfo->type, rinfo->addr, rinfo->clout, rinfo->rate), &cur_list);
 		
-		for (dst = dst_list.next; dst != NULL; dst = dst->next){
+		for (dst = dsts.next; dst != NULL; dst = dst->next){
 			if (dst->round == rinfo->round){
 				dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
 			}
@@ -588,7 +588,7 @@ void test_relay(){
 			if (!memcmp(rinfo->addr, same_relay->addr, ETH_ALEN)){
 				same_relay->type = 100;
 				relay_info_insert(relay_info_create(same_relay->round, same_relay->type, same_relay->addr, same_relay->clout, same_relay->rate), &cur_list);
-				for (dst = dst_list.next; dst != NULL; dst = dst->next){
+				for (dst = dsts.next; dst != NULL; dst = dst->next){
 					if (dst->round == same_relay->round && dst_info_find_addr(&child_list, dst->addr)==NULL){
 						dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
 					}
