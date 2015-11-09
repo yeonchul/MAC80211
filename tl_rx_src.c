@@ -446,7 +446,6 @@ void send_setrelay(){
 				dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
 			}
 		}
-	
 
 		for (same_relay = rinfo->next; same_relay != NULL; same_relay = same_relay->next){
 			if (same_relay->type == 100)
@@ -456,13 +455,12 @@ void send_setrelay(){
 				same_relay->type = 100;
 				relay_info_insert(relay_info_create(same_relay->round, same_relay->type, same_relay->addr, same_relay->clout, same_relay->rate), &cur_list);
 				for (dst = dst_list.next; dst != NULL; dst = dst->next){
-					if (dst->round == same_relay->round){
+					if (dst->round == same_relay->round && dst_info_find_addr(&child_list, dst->addr)==NULL){
 						dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
 					}
 				}
 			}
 		} 
-		
 		size = ETHERHEADLEN + 1 + 1 + src_snd_list.qlen*2 + 4 + 1 + cur_list.qlen*2 + 1 + 6*child_list.qlen;		
 		pkt = tl_alloc_skb(dev_send, rinfo->addr, dev_send->dev_addr, size, SetRelay);
 
@@ -507,7 +505,6 @@ void send_setrelay(){
 
 		relay_info_list_purge(&cur_list);	
 		dst_info_list_purge(&child_list);	
-	
 	}
 }
 
@@ -524,55 +521,130 @@ void test_relay(){
  
 	struct dst_info_list dsts;
 	struct relay_info_list relays;
+	struct relay_info_list src_snd_list;
 
 	struct relay_info * info;
 	struct relay_info * rinfo;
 
 	relay_info_list_init(&relays);
+	relay_info_list_init(&src_snd_list);
 	dst_info_list_init(&dsts);
-	
+
 	printk(KERN_INFO "Start Test\n");
+	
+	relay_info_insert(relay_info_create(1, 0, dev_send->dev_addr, 10, 6), &relays);
+	relay_info_insert(relay_info_create(1, 0, dev_send->dev_addr, 10, 8), &relays);
 	
 	info = relay_info_create(round, 1, relay_addr, clout, rate);
 	info->offset = 1000;	
-
 	relay_info_insert(info, &relays);
 
+	info = relay_info_create(round, 1, relay_addr, clout+3, rate+1);
+	info->offset = 1000;	
+	relay_info_insert(info, &relays);
+	
 	dst_info_insert(dst_info_create(child_addr, 0, round), &dsts);
+
+	
+	for (rinfo = relays.next; rinfo != NULL; rinfo = rinfo->next){
+		if (rinfo->type == 0){
+			relay_info_insert(relay_info_create(rinfo->round, rinfo->type, rinfo->addr, rinfo->clout, rinfo->rate), &src_snd_list);
+		}
+	}
 
 	for (rinfo = relays.next; rinfo != NULL; rinfo = rinfo->next){
 		struct sk_buff * pkt;
 		struct dst_info * dst;
+		struct dst_info_list child_list;
+		struct relay_info_list cur_list;
 		unsigned int size = 0;
-		unsigned char n_child = 1;
+		unsigned int offset = 0;
+		struct relay_info * same_relay;  
 
 		if (rinfo->type == 0)
 			continue;
 
-		size = ETHERHEADLEN + 9 + 6*n_child;		
+		if (rinfo->type == 100) //already served relay nodes
+			continue;
+
+		relay_info_list_init(&cur_list);
+		dst_info_list_init(&child_list);
+
+		rinfo->type = 100;	
+		offset = rinfo->offset;	
+	
+		relay_info_insert(relay_info_create(rinfo->round, rinfo->type, rinfo->addr, rinfo->clout, rinfo->rate), &cur_list);
+		
+		for (dst = dst_list.next; dst != NULL; dst = dst->next){
+			if (dst->round == rinfo->round){
+				dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
+			}
+		}
+
+		for (same_relay = rinfo->next; same_relay != NULL; same_relay = same_relay->next){
+			if (same_relay->type == 100)
+				continue;			
+
+			if (!memcmp(rinfo->addr, same_relay->addr, ETH_ALEN)){
+				same_relay->type = 100;
+				relay_info_insert(relay_info_create(same_relay->round, same_relay->type, same_relay->addr, same_relay->clout, same_relay->rate), &cur_list);
+				for (dst = dst_list.next; dst != NULL; dst = dst->next){
+					if (dst->round == same_relay->round && dst_info_find_addr(&child_list, dst->addr)==NULL){
+						dst_info_insert(dst_info_create(dst->addr, 10, dst->round), &child_list);
+					}
+				}
+			}
+		} 
+
+		size = ETHERHEADLEN + 1 + 1 + src_snd_list.qlen*2 + 4 + 1 + cur_list.qlen*2 + 1 + 6*child_list.qlen;		
 		pkt = tl_alloc_skb(dev_send, rinfo->addr, dev_send->dev_addr, size, SetRelay);
 
 		if(pkt != NULL){
 			unsigned int i = 0;
-			pkt->data[ETHERHEADLEN + 1] = 5;
-			pkt->data[ETHERHEADLEN + 2] = rinfo->clout;
-			pkt->data[ETHERHEADLEN + 3] = rinfo->rate;
-			pkt->data[ETHERHEADLEN + 4] = (rinfo->offset >> 24) & 0xff;
-			pkt->data[ETHERHEADLEN + 5] = (rinfo->offset >> 16) & 0xff;
-			pkt->data[ETHERHEADLEN + 6] = (rinfo->offset >> 8) & 0xff;
-			pkt->data[ETHERHEADLEN + 7] = rinfo->offset & 0xff;
-			pkt->data[ETHERHEADLEN + 8] = n_child;
+			struct relay_info * relay; 
+			struct dst_info * dst_t;
 
-			for (dst = dsts.next; dst != NULL; dst = dst->next){
-				if (dst->round == rinfo->round){
-					memcpy(&(pkt->data[ETHERHEADLEN + 9 + i]), dst->addr, ETH_ALEN);
-					i += ETH_ALEN;
-				}
+			pkt->data[ETHERHEADLEN + 1] = tr_get_data_k();
+			pkt->data[ETHERHEADLEN + 2] = src_snd_list.qlen;
+
+			for (relay = src_snd_list.next; relay != NULL; relay = relay->next){
+				pkt->data[ETHERHEADLEN + 3 + i] = relay->clout;
+				pkt->data[ETHERHEADLEN + 4 + i] = relay->rate;
+				i += 2;
+			}
+
+			pkt->data[ETHERHEADLEN + 3 + i] = (offset >> 24) & 0xff;
+			pkt->data[ETHERHEADLEN + 4 + i] = (offset >> 16) & 0xff;
+			pkt->data[ETHERHEADLEN + 5 + i] = (offset >> 8) & 0xff;
+			pkt->data[ETHERHEADLEN + 6 + i] = offset & 0xff;
+			pkt->data[ETHERHEADLEN + 7 + i] = cur_list.qlen;
+
+			for (relay = cur_list.next; relay != NULL; relay = relay->next){
+				pkt->data[ETHERHEADLEN + 8 + i] = relay->clout;
+				pkt->data[ETHERHEADLEN + 9 + i] = relay->rate;
+				i += 2;
+			}
+			
+			pkt->data[ETHERHEADLEN + 8 + i] = child_list.qlen;
+
+			for (dst_t = child_list.next; dst_t != NULL; dst_t = dst_t->next){
+				memcpy(&(pkt->data[ETHERHEADLEN + 9 + i]), dst_t->addr, ETH_ALEN);
+				i += ETH_ALEN;
 			}	
+
 			dev_queue_xmit(pkt);
 		}
+		else{
+			printk("Packet memory assignment fails\n");
+		}
+
+		relay_info_list_purge(&cur_list);	
+		dst_info_list_purge(&child_list);	
 	}
+
+
 	relay_info_list_purge(&relays);
+	relay_info_list_purge(&src_snd_list);
 	dst_info_list_purge(&dsts);
 
 }
