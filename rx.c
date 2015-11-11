@@ -3530,6 +3530,14 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 
 	WARN_ON_ONCE(softirq_count() == 0);
 
+
+	if (status->flag & (RX_FLAG_FAILED_FCS_CRC)){
+		printk("Error by FCS CRC error\n");
+	}
+	if (status->flag & (RX_FLAG_FAILED_PLCP_CRC)){
+		printk("Error by PLCP CRC error\n");
+	}
+
 	if (WARN_ON(status->band >= IEEE80211_NUM_BANDS))
 		goto drop;
 
