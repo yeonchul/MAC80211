@@ -59,7 +59,7 @@ enum hrtimer_restart send_relay_callback(struct hrtimer *timer){
 			// printk(KERN_INFO "Decoding start, eid = %x\n", eid);
 			if(skbs_decoding(&(mncq->skbs), &newskbs, mncq->kp)){
 				printk(KERN_INFO "Decoding success! eid: %x, k: %x, p: %x, last_did[0] = %x, last_did[1] = %x, last_did[2] = %x\n", last_eid, k, mncq->kp & 0x3, last_did[0], last_did[1], last_did[2]);
-				if((tr_get_data_n() > 0) && (!tr_get_src())){
+				if((tr_get_relay_rate_num() > 0) && (!tr_get_src())){
 					mnc_encoding_tx(&newskbs, rdev, last_eid);
 				}
 				while(!skb_queue_empty(&newskbs)){

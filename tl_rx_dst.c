@@ -16,7 +16,6 @@ static struct timer_list tl_2hop_mcs_send_timer;
 static void tl_periodic_feedback(unsigned long data);
 static void tl_2hop_mcs_send_timer_func(unsigned long data);
 
-
 static unsigned char multicast_addr[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01};
 static unsigned char parent_addr[ETH_ALEN] = {0};
 static unsigned char tf1_addr[ETH_ALEN]={0};
@@ -36,8 +35,6 @@ static struct tr_info_list *rcv_list = NULL;
 static unsigned char feedback_counter = 0;
 
 static unsigned char child_name[20][ETH_ALEN];
-static unsigned char n_child;
-
 
 static void tl_rx_tr2_timer_func(unsigned long data){
 	unsigned int qlen;	
@@ -297,7 +294,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				unsigned char batt = 0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); // may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
-				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
+				tr_set_param(false, false, 10, 0, 0, 0, 0);
+				tr_reset_relay();
 				batt= set_batt(batt_i.m_status, batt_i.m_capacity);
 				info = tr_info_create(skb_saddr, skb->dev, tf1_k, rcv, rssi, batt);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf1_k, tf1_seq, tf1_index, mcs);
@@ -322,8 +320,9 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
-				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
-				printk(KERN_INFO "Reset Receive first TypeOneTf, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
+				tr_set_param(false, false, 10, 0, 0, 0, 0);
+				tr_reset_relay();
+				printk(KERN_INFO "Reset Receive first TypeOneTf, set parameter src = %d, sys = %d, data_k = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 				
 				info->total_num = tf1_k;
 				memset(info->rcv_num, 0, sizeof(unsigned int)*NUM_MCS);
@@ -358,7 +357,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				unsigned char batt = 0;
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
-				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
+				tr_set_param(false, false, 10, 0, 0, 0, 0);
+				tr_reset_relay();
 				batt = set_batt(batt_i.m_status, batt_i.m_capacity);
 				info = tr_info_create(skb_saddr, skb->dev, tf2_k, rcv, rssi, batt);
 				printk(KERN_INFO "Initialize skb type : TypeOne k: %d seq: %d id: %d mcs: %d\n", tf2_k, tf2_seq, tf2_index, mcs);
@@ -379,8 +379,9 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 				unsigned int rcv[NUM_MCS]; //may incur an error
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 				memset(rssi_avg, 0, sizeof(int)*NUM_MCS);
-				tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
-				printk(KERN_INFO "Reset Receive first TypeOneTf, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
+				tr_set_param(false, false, 10, 0, 0, 0, 0);
+				tr_reset_relay();
+				printk(KERN_INFO "Reset Receive first TypeOneTf, set parameter src = %d, sys = %d, data_k = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 				
 				info->total_num = tf2_k;
 				memcpy(info->rcv_num, rcv, sizeof(unsigned int)*NUM_MCS);
@@ -452,36 +453,50 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 		else if(skb_type == SetRelay){
 			if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
 				unsigned char skb_k = skb->data[1];
-				unsigned char skb_n = skb->data[2];
-				unsigned char mcs = skb->data[3];
-				unsigned int offset = (unsigned int) skb->data[4] << 24 | skb->data[5] << 16 | skb->data[6] << 8 | skb->data[7];
+				unsigned char src_num = skb->data[2];
+				unsigned char relay_num;
 				unsigned char i;
+				unsigned int offset;
+				unsigned char n_child;
 
-				n_child = skb->data[8];
+				for(i = 0; i < src_num; i++){
+				}
+
+				offset = (unsigned int) skb->data[2*src_num+3] << 24 | skb->data[2*src_num+4] << 16 | skb->data[2*src_num+5] << 8 | skb->data[2*src_num+6];
+				
+				tr_set_param(false, false, skb_k, 0, 0, 0, offset);
+				
+				relay_num = skb->data[2*src_num+7];
+
+				for(i = 0; i < relay_num; i++){
+					tr_add_relay(skb->data[2*src_num+2*i+8], skb->data[2*src_num+2*i+9]);
+				}
+
+				n_child = skb->data[2*src_num+2*relay_num+8];
+				
 				memcpy(parent_addr, skb_saddr, ETH_ALEN);
 
-				tr_set_param(false, false, skb_k, skb_n, 0, 0, 0, mcs, offset);
-				printk("Receive SetRelay, set parameter src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d, mcs = %d, offset = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n(), tr_get_mcs(), tr_get_offset());
-
-				if(!(n_child == 0 && skb_n == 0)){
+				if(relay_num != 0){
 					for(i = 0; i < n_child; i++){
 						struct sk_buff* rpt;
-						int ii = 9 + i * ETH_ALEN;
+						int ii = 2*src_num + 2*relay_num + 9 + i * ETH_ALEN;
 						memcpy(child_name[i], &(skb->data[ii]), ETH_ALEN);
 
 						rpt = tl_alloc_skb(skb->dev, child_name[i], skb->dev->dev_addr, ETHERHEADLEN+9, SetRelay);
 						rpt->data[ETHERHEADLEN + 1] = skb_k;
-						rpt->data[ETHERHEADLEN + 2] = 0;
-						rpt->data[ETHERHEADLEN + 3] = 0;
-						rpt->data[ETHERHEADLEN + 4] = 0;
-						rpt->data[ETHERHEADLEN + 5] = 0;
-						rpt->data[ETHERHEADLEN + 6] = 0;
-						rpt->data[ETHERHEADLEN + 7] = 0;
-						rpt->data[ETHERHEADLEN + 8] = 0;
+						rpt->data[ETHERHEADLEN + 2] = 0; //src_num
+						rpt->data[ETHERHEADLEN + 3] = 0; //offset1
+						rpt->data[ETHERHEADLEN + 4] = 0; //offset2
+						rpt->data[ETHERHEADLEN + 5] = 0; //offset3
+						rpt->data[ETHERHEADLEN + 6] = 0; //offset4
+						rpt->data[ETHERHEADLEN + 7] = 0; //relay_num
+						rpt->data[ETHERHEADLEN + 8] = 0; //n_child
 						dev_queue_xmit(rpt);
 						printk("Send SetRelay Message(%d); k = %d, SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", SetRelay, skb_k, skb->dev->dev_addr[0], skb->dev->dev_addr[1], skb->dev->dev_addr[2], skb->dev->dev_addr[3], skb->dev->dev_addr[4], skb->dev->dev_addr[5], child_name[i][0], child_name[i][1], child_name[i][2], child_name[i][3], child_name[i][4], child_name[i][5]);
 					}
 				}
+				
+				printk("Receive SetRelay, set parameter src = %d, sys = %d, data_k = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d, offset = %d, src_num = %d, relay_num = %d, n_child = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n(), tr_get_offset(), src_num, relay_num, n_child);
 
 				printk("My parent = %x:%x:%x:%x:%x:%x\n", parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5]);
 				for(i = 0; i < n_child; i++){
@@ -608,7 +623,7 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi){
 
 	}
 	else if(skb_type == TF_RPT){
-		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN) && tr_get_data_n() > 0  ){
+		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN) && tr_get_relay_rate_num() > 0){
 			struct sk_buff * rpt;
 			unsigned int size = 0;
 			unsigned char num_nbr = skb->data[2];			
@@ -739,7 +754,8 @@ void update_rssi(struct sk_buff *skb, char rssi){
 			unsigned char batt = 0;
 			memset(rcv, 0, sizeof(unsigned int)*NUM_MCS); //may incur an error
 			//memset(rssi_avg, 0, sizeof(int)*NUM_MCS); //gjlee?
-			tr_set_param(false, false, 10, 0, 0, 0, 0, 0, 0);
+			tr_set_param(false, false, 10, 0, 0, 0, 0);
+			tr_reset_relay();
 			batt = set_batt(batt_i.m_status, batt_i.m_capacity);
 			info = tr_info_create(skb_saddr, skb->dev, 1, rcv, rssi, batt);
 			printk("update rssi: %d; New SA = %x:%x:%x:%x:%x:%x\n", rssi, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5]);
