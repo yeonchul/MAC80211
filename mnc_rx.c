@@ -160,7 +160,6 @@ void decoding_try(struct sk_buff *skb)
 		}
 		//	printk(KERN_INFO "\n");
 	}
-
 }
 
 

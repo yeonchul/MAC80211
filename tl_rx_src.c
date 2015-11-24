@@ -54,12 +54,11 @@ bool tl_start_check(struct sk_buff *skb){
 		relay_info_list_purge(&relay_list);
 		dst_info_list_purge(&dst_list);
 		
-		test_relay();
+		//test_relay();
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
 	
-		return true;
-		//tl_mcs_send_timer_func(0);
+		tl_mcs_send_timer_func(0);
 
 	}
 	return true;
@@ -364,23 +363,29 @@ void tl_receive_skb_src(struct sk_buff *skb){
 
 				for(i = 0; i < num_nbr; i++){
 					struct tr_info *info;
-					int ii = 3 + i * (ETH_ALEN + 2);
+					int ii = 3 + i * (ETH_ALEN + 2 + NUM_MCS);
 					unsigned char *nbr_addr = &(skb->data[ii]);
 					char rssi = skb->data[ii + ETH_ALEN];
 					unsigned char batt = skb->data[ii + ETH_ALEN + 1];
+					unsigned int j = 0;
+					unsigned int rcv[NUM_MCS] = {0};
+
+					for (j = 0; j < NUM_MCS; j++){
+						rcv[j] = (unsigned int)skb->data[ii+ETH_ALEN + 2 + j];
+					}
 
 					// Initialize
 					if((info = tr_info_find_addr(nbr_2hop_list, nbr_addr)) == NULL){
-						unsigned int rcv[NUM_MCS]={0};
-						info = tr_info_create(nbr_addr, skb->dev, 0, rcv, rssi, batt);
+						info = tr_info_create(nbr_addr, skb->dev, 100, rcv, rssi, batt);
 						tr_info_insert(info, nbr_2hop_list);
 					}
 					else{
 						info->rssi = rssi;
 						info->batt = batt;
 						info->dev = skb->dev;
+						memcpy(info->rcv_num, rcv, sizeof(unsigned int)*NUM_MCS); 
 					}
-					printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt);
+					printk("Addr%d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d RCV: (%d %d %d %d %d %d %d %d %d %d %d %d)\n", i, nbr_addr[0], nbr_addr[1], nbr_addr[2], nbr_addr[3], nbr_addr[4], nbr_addr[5], rssi, batt, rcv[0], rcv[1], rcv[2], rcv[3], rcv[4], rcv[5], rcv[6], rcv[7], rcv[8], rcv[9], rcv[10], rcv[10]);
 				}
 				//tr_info_list_print(&src_nbr_list);
 			}
