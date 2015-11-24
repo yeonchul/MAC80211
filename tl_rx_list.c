@@ -105,6 +105,7 @@ void tr_info_list_arrangement(struct tr_info_list *list){
 	printk("-----------------------------------------------------------------------\n");
 }
 
+/*
 unsigned char tr_info_list_pr_dof(struct tr_info_list *list, unsigned char addr[]){
 	unsigned char nbr_dof = tr_get_data_k();
 	struct tr_info *temp_info = tr_info_find_addr(list, addr);
@@ -125,6 +126,8 @@ unsigned char tr_info_max_clout(struct tr_info *info){
 	}
 	return max_clout;
 }
+*/
+
 void mnp_relay(struct tr_info_list *list){
 	printk("MNP relay select function\n");
 	/*

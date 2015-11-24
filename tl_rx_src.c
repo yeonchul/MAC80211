@@ -39,6 +39,7 @@ unsigned int cal_tx_time(unsigned char mcs, unsigned char num, unsigned int len)
 }
 */
 bool tl_start_check(struct sk_buff *skb){
+#if 0
 	unsigned char *port = skb_transport_header(skb);
 	unsigned char *data = skb->data + 42;
 	unsigned int i;
@@ -70,6 +71,8 @@ bool tl_start_check(struct sk_buff *skb){
 
 		tl_mcs_send_timer_func(0);
 	}
+	return true;
+#endif
 	return true;
 }
 

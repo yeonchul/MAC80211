@@ -54,12 +54,11 @@ struct tr_param{
 	bool src;
 	bool sys;
 	unsigned char data_k;
-	unsigned char data_n;
 	unsigned int tf_k;
 	unsigned int tf_thre;
 	unsigned char max_relay_n;
-	unsigned char mcs;
 	unsigned int offset; 
+	unsigned char relay_rate_num;
 };
 
 struct tr_info_list{
@@ -145,16 +144,20 @@ void dst_info_free(struct dst_info *info);
 void dst_info_insert(struct dst_info *newinfo, struct dst_info_list *list);
 struct dst_info *dst_info_find_addr(struct dst_info_list *list, unsigned char addr[]);
 
-void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned char data_n, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n, unsigned char mcs, unsigned int offset);
+void tr_set_param(bool src, bool sys, unsigned char data_k, unsigned int tf_k, unsigned int tf_thre, unsigned char max_relay_n, unsigned int offset);
+void tr_add_relay(unsigned char clout, unsigned char rate);
+void tr_reset_relay(void);
+unsigned char tr_get_clout(unsigned char relay_rate_num);
+unsigned char tr_get_rate(unsigned char relay_rate_num);
 bool tr_get_src(void);
 bool tr_get_sys(void);
 unsigned char tr_get_data_k(void);
-unsigned char tr_get_data_n(void);
 unsigned int tr_get_tf_k(void);
 unsigned int tr_get_tf_thre(void);
 unsigned char tr_get_max_relay_n(void);
-unsigned char tr_get_mcs(void);
 unsigned int tr_get_offset(void);
+unsigned char tr_get_relay_rate_num(void);
+
 void trinfo_print(struct tr_info *info);
 unsigned int get_tot_rcv(struct tr_info* info);
 unsigned char set_batt(unsigned char status, unsigned char capacity);

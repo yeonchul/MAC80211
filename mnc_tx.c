@@ -337,6 +337,7 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 
 	skb_queue_head_init(&skbs_result);
 
+#if 0
 	if(tr_get_sys() == 1){
 		// Enqueue K original packets
 		enqueue_skb_original(skbs, P, id, &skbs_result);
@@ -365,7 +366,25 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 			}
 		}
 	}
+#endif
 	
+	for(m = 0; m < tr_get_relay_rate_num(); m++){
+		unsigned char clout = tr_get_clout(m);
+		unsigned char rate = tr_get_rate(m);
+		unsigned char seq;
+		for(seq = 0; seq < clout; seq++){
+			//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
+			skb_temp = make_skb_new(skbs, P, id, seq);
+			if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", seq);
+			else{
+				struct ieee80211_tx_info *tx_info = IEEE80211_SKB_CB(skb_temp);
+				tx_info->control.rates[0].idx = rate;
+				skb_queue_tail(&skbs_result, skb_temp);
+			}
+		}
+	}
+
+
 	/*
 	// Drop original packets
 	while(!skb_queue_empty(skbs)){
