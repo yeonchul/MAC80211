@@ -3,7 +3,7 @@
 static struct tr_param param = {false,	// src
 																false,	// sys
 																10,			// data_k
-																0,			// tf_k
+																100,			// tf_k
 																0,			// tf_thre
 																0,			// max_relay_n
 																0,			// offset
