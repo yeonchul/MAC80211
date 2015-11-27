@@ -32,7 +32,7 @@ mac80211-y := \
 	tdls.o \
 	ocb.o \
 	mnc_tx.o mnc_rx.o gf.o \
-	tl_rx_src.o tl_rx_dst.o tl_rx_list.o tl_rx_param.o tl_rx.o
+	tl_rx_src.o tl_rx_dst.o tl_rx_list.o tl_rx_param.o tl_rx.o online_table.o
 
 mac80211-$(CPTCFG_MAC80211_LEDS) += led.o
 mac80211-$(CPTCFG_MAC80211_DEBUGFS) += \
