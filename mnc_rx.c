@@ -7,6 +7,8 @@
 #include "mnc_rx.h"
 #include "tl_rx.h"
 #include "gf.h"
+#include "online_table.h"
+
 
 #define ETIMEOUT 125 // 500msec
 #define DTIMEOUT 125 // 500msec
@@ -14,7 +16,7 @@
 #define ETHERLEN 14
 #define IS_RUN 1
 
-#define TEST_MODULE
+//#define TEST_MODULE
 
 static struct timer_list bnack_timer;
 static void bnack_func(unsigned long data);
@@ -117,6 +119,10 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 	static bool runtime = false;
 	ktime_t relay_time;
 	unsigned long remain_time_us;
+	//ycshin
+	unsigned char n;
+	unsigned int offset;
+
 
 	rdev = skb->dev;
 	mh_pos = skb_mac_header(skb) - skb->head;
@@ -175,6 +181,7 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 #endif
 
 		if(i == 0){
+			unsigned char mcs = 0;
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
 			
@@ -182,7 +189,13 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 			if(IS_RUN){
 				runtime = true;
 			}
-			
+		/*		
+			for (mcs = 0; mcs < NUM_MCS; mcs++){
+				filling_blank(mcs);
+			}
+			monotonicity();
+			print_res_table();
+	*/
 			setup_timer(&bnack_timer, &bnack_func, 0);
 			mod_timer(&bnack_timer, jiffies + BNACK_TIMEOUT);
 #endif
@@ -196,11 +209,18 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 #endif
 
 		cjiffies = jiffies;
-		eid = skb->data[1];
 		kp = skb->data[0];
 		k = kp >> 2;
-		m = (skb->data[2] >> 2);
-		seq = skb->data[3];
+		n = skb->data[1];
+		seq = skb->data[2];
+		m = (skb->data[3] >> 2);
+		eid = skb->data[4];
+		offset = (unsigned int) skb->data[5] << 24 | skb->data[6] << 16 | skb->data[7] << 8 | skb->data[8];
+	
+		update_table((unsigned int)seq, (unsigned int)eid, mcs, rssi, 1, (unsigned int)n, 100);
+
+		printk("id: %d k: %d n: %d seq: %d offset: %d m: %d\n", eid, k, n, seq, offset, m);
+
 
 		mnc_queue_head_check_etime(&list, cjiffies);
 

@@ -30,7 +30,7 @@ int init_module(void)
 				get_random_bytes(&v, 1);
 					
 				rssi = -1*(v%30+50);
-				update_table(seq, id, mcs, rssi, start_nc, nc_n);
+				update_table(seq, id, mcs, rssi, start_nc, nc_n, 100);
 			}
 		}
 	}

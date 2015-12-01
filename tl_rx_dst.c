@@ -2,6 +2,7 @@
 
 #include "tl_rx.h"
 #include <net/mac80211.h>
+#include "online_table.h"
 
 //struct tr_info *tf1_info = NULL;
 //struct tr_info *tf2_info = NULL;
@@ -254,7 +255,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 		
 		tr_info_list_init(snd_list);
 		tr_info_list_init(rcv_list);
-		
+		init_table();
+
 		setup_timer(&tl_rx_tf1_timer, &tl_rx_tf1_timer_func, TypeOneTR);
 		setup_timer(&tl_rx_tf2_timer, &tl_rx_tf2_timer_func, TypeTwoTR);
 		setup_timer(&tl_rx_tr2_timer, &tl_rx_tr2_timer_func, 0);
@@ -272,9 +274,10 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 		unsigned int tf1_index = (unsigned int) skb->data[9] << 24 | skb->data[10] << 16 | skb->data[11] << 8 | skb->data[12];
 		unsigned char mcs = (unsigned char) skb->data[13];
 		
-		printk(KERN_INFO "skb type: TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
+		//printk(KERN_INFO "skb type: TypeOne k: %d seq: %d id: %d mcs: %d rssi: %d\n", tf1_k, tf1_seq, tf1_index, mcs, rssi);
 		//
-		
+		update_table(tf1_seq, tf1_index, mcs, rssi, 0, 0, tf1_k);
+
 		if (mcs > NUM_MCS){
 			printk("ERROR, invalid MCS index\n");
 			dev_kfree_skb(skb);
@@ -344,6 +347,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 		//unsigned int tf2_rest = tf2_k/4 - tf2_seq/4 + 1;
 		
 		//printk(KERN_INFO "skb type: TypeTwo  k: %d seq: %d id: %d mcs: %d\n", tf2_k, tf2_seq, tf2_index, mcs);
+		
+		update_table(tf2_seq, tf2_index, mcs, rssi, 0, 0, tf2_k);
 		
 		if(tf2_k < tf2_seq){
 			printk("ERROR, tf2_k is lower than tf2_seq\n");
@@ -431,8 +436,17 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 
 	else if(skb_type == SendTF){
 		unsigned int skb_k = (unsigned int) skb->data[1] << 24 | skb->data[2] << 16 | skb->data[3] << 8 | skb->data[4];
+		unsigned char mcs = 0;
 		if(!memcmp(skb->dev->dev_addr, skb_daddr, ETH_ALEN)){
 			printk("Receive SendTF Message(%d); SA = %x:%x:%x:%x:%x:%x, DA = %x:%x:%x:%x:%x:%x\n", skb_type, skb_saddr[0], skb_saddr[1], skb_saddr[2], skb_saddr[3], skb_saddr[4], skb_saddr[5], skb_daddr[0], skb_daddr[1], skb_daddr[2], skb_daddr[3], skb_daddr[4], skb_daddr[5]);
+			// it is for test, please delete
+		
+			for (mcs =0; mcs < NUM_MCS; mcs++){
+					filling_blank(mcs);
+			}
+			monotonicity();
+			print_res_table();
+			
 			if(sdf_info == NULL){
 				unsigned int rcv[NUM_MCS];
 				memset(rcv, 0, sizeof(unsigned int)*NUM_MCS);
@@ -537,12 +551,17 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 			len = rcv_list->qlen;
 		}
 		
-		size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
+		size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2 + NUM_MCS)*len); // 3: 1 type 1 batt 1 len
 		rpt = tl_alloc_skb(dev_send2, skb_saddr, dev_send2->dev_addr, size, TF_RPT);
 
 		if(rpt != NULL){
 			unsigned int i = 0;
 			struct tr_info *info = NULL;
+			unsigned int mcs = 0;
+			for (mcs = 0; mcs < NUM_MCS; mcs++){
+				filling_blank(mcs);
+			}
+			monotonicity();
 			if(rcv_list != NULL)
 				info = rcv_list->next;
 
@@ -550,8 +569,8 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 			rpt->data[ETHERHEADLEN + 2] = len;
 
 			for(i = 0; i < len; i++){
-				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
-
+				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2+NUM_MCS);
+				unsigned int j = 0;
 				if(info == NULL){
 					printk("Empty info\n");
 					break;
@@ -560,6 +579,12 @@ void tl_receive_skb_dst(struct sk_buff *skb, char rssi, unsigned char mcs){
 				memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
 				rpt->data[ii+ETH_ALEN] = info->rssi;
 				rpt->data[ii+ETH_ALEN+1] = info->batt;
+
+				for (j = 0; j < NUM_MCS; j++){
+					unsigned char pdr = (unsigned char)get_pdr(j, info->rssi);
+					rpt->data[ii + ETH_ALEN + 2 + j] = pdr;
+				}
+		
 				info = info->next;
 			}
 			
@@ -771,6 +796,12 @@ void update_rssi(struct sk_buff *skb, char rssi){
 }
 
 static void tl_periodic_feedback(unsigned long data){
+	unsigned int mcs = 0;
+	for (mcs = 0; mcs < NUM_MCS; mcs++){
+		filling_blank(mcs);
+	}
+	monotonicity();
+	
 	if(parent_addr == NULL){
 		printk("Error, no parent addr\n");
 	}
@@ -783,7 +814,7 @@ static void tl_periodic_feedback(unsigned long data){
 	else{
 		struct tr_info *info = rcv_list->next;
 		unsigned int len = rcv_list->qlen; 
-		unsigned int size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
+		unsigned int size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2 + NUM_MCS)*len); // 3: 1 type 1 batt 1 len
 		struct sk_buff *rpt = tl_alloc_skb(dev_send2, parent_addr, dev_send2->dev_addr, size, U_FB); 
 		if(rpt!=NULL){
 			unsigned int i = 0;
@@ -791,12 +822,21 @@ static void tl_periodic_feedback(unsigned long data){
 			rpt->data[ETHERHEADLEN + 2] = len;
 
 			for (i = 0; i < len; i++){
-				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
+				unsigned int j = 0;
+				unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2 + NUM_MCS);
+				unsigned int rcv[NUM_MCS] = {0};
 				memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
 				rpt->data[ii+ETH_ALEN] = info->rssi;
 				rpt->data[ii+ETH_ALEN+1] = info->batt;
 
+				for (j = 0; j < NUM_MCS; j++){
+					unsigned char pdr = (unsigned char)get_pdr(j, info->rssi);
+					rcv[j] = (unsigned int) pdr;
+					rpt->data[ii + ETH_ALEN + 2 + j] = pdr;
+				}
 				info = rcv_list->next; // info = info->next;
+
+				printk("Nbr %d = %x:%x:%x:%x:%x:%x, rssi = %d batt = %d RCV: (%d %d %d %d %d %d %d %d %d %d %d %d)\n", i,  parent_addr[0], parent_addr[1], parent_addr[2], parent_addr[3], parent_addr[4], parent_addr[5],info->rssi, info->batt, rcv[0], rcv[1], rcv[2], rcv[3], rcv[4], rcv[5], rcv[6], rcv[7], rcv[8], rcv[9], rcv[10], rcv[11]);
 
 				if(info == NULL){
 					printk("Empty info\n");
@@ -822,13 +862,18 @@ void send_bnack(unsigned char *dest_addr){
 	struct sk_buff *rpt; 
 	unsigned int len; 
 	unsigned int size;
+	unsigned int mcs = 0;
+	for (mcs = 0; mcs < NUM_MCS; mcs++){
+		filling_blank(mcs);
+	}
+		monotonicity();
 
 	if(rcv_list == NULL){
 		printk("send_bnack Error, NULL rcv_list\n");
 	}
 		
 	len = rcv_list->qlen; 
-	size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2)*len); // 3: 1 type 1 batt 1 len
+	size =  ETHERHEADLEN + 3 + ((ETH_ALEN + 2 + NUM_MCS)*len); // 3: 1 type 1 batt 1 len
 	rpt = tl_alloc_skb(dev_send2, dest_addr, dev_send2->dev_addr, size, BLOCK_NACK); 
 	
 	if(rpt != NULL){
@@ -839,7 +884,8 @@ void send_bnack(unsigned char *dest_addr){
 		rpt->data[ETHERHEADLEN + 2] = len;
 
 		for(i = 0; i < len; i++){
-			unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2);
+			unsigned int j = 0;
+			unsigned int ii = ETHERHEADLEN + 3 + i*(ETH_ALEN+2 + NUM_MCS);
 			
 			if(info == NULL){
 				printk("Empty info\n");
@@ -849,6 +895,12 @@ void send_bnack(unsigned char *dest_addr){
 			memcpy(&(rpt->data[ii]), info->addr, ETH_ALEN);
 			rpt->data[ii+ETH_ALEN] = info->rssi;
 			rpt->data[ii+ETH_ALEN+1] = info->batt;
+				
+			for (j = 0; j < NUM_MCS; j++){
+					unsigned char pdr = (unsigned char)get_pdr(j, info->rssi);
+					rpt->data[ii + ETH_ALEN + 2 + j] = pdr;
+			}
+			
 			info = info->next;
 		}
 
