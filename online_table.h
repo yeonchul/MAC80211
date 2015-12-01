@@ -11,7 +11,7 @@
 #define NUM_SAMPLE 40
 #define MIN_SAMPLE 5
 #define RSSI_TRANSITION 4
-#define RSSI_MIN -90
+#define RSSI_MIN -80
 
 struct mcs_info{
 	bool l_exist;
@@ -31,7 +31,7 @@ static bool init = false;
 
 
 void init_table(void);
-void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi, bool start_nc, unsigned int nc_n);
+void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi, bool start_nc, unsigned int nc_n, unsigned int table_k);
 void record_sample(unsigned char mcs, int rssi_sum, unsigned int rcv, unsigned int tot);
 void print_table(unsigned int table[][NUM_RSSI]);
 void set_training_max(unsigned int max);

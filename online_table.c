@@ -9,7 +9,7 @@ X_RSSI 50
  11 #define NUM_SAMPLE 20
  12 #define RSSI_TRANSITION 4
 */
-#define YCSHIN 0
+//#define YCSHIN 0
 
 #undef YDEBUG
 #ifdef YCSHIN
@@ -33,7 +33,7 @@ void init_table(){
 	}	
 	init = false;	
 }
-void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi, bool start_nc, unsigned int nc_n){
+void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi, bool start_nc, unsigned int nc_n, unsigned int table_k){
 	static int rssi_cur = 0;
 	static unsigned char mcs_cur = 0;
 	static unsigned int first_seq = 0;
@@ -56,7 +56,7 @@ void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi
 		if (id != id_cur || mcs != mcs_cur){
 					record_sample(mcs_cur, rssi_cur, rcv_cur, nc_n);
 					filling_blank(mcs_cur);
-					monotonicity();
+					//monotonicity();
 			
 			mcs_cur = mcs;
 			rssi_cur = rssi;
@@ -75,7 +75,7 @@ void update_table(unsigned int seq, unsigned int id, unsigned char mcs, int rssi
 	if (mcs != mcs_cur || id != id_cur ){
 		if (mcs != mcs_cur){
 			printk("New mcs is comming %d\n", (unsigned int)mcs);
-			tot_cur = tr_get_tf_k() - first_seq; 
+			tot_cur = table_k - first_seq; 
 		}
 		else {
 			printk("New id comming %d\n", id);
@@ -117,6 +117,8 @@ void record_sample(unsigned char mcs, int rssi_sum, unsigned int rcv, unsigned i
 	unsigned int pdr_cur = 0;
 	//unsigned int final_rssi = 0;
 
+	YDEBUG("Record Sample mcs: %d rssi: %d rcv: %d tot: %d pdr: %d\n", mcs, rssi, rcv, tot, pdr);
+	
 	if (rssi < RSSI_MIN || (rssi - RSSI_MIN) >= NUM_RSSI){
 		printk("Too high or too low RSSI: %d (dB)\n", rssi);
 		return;
@@ -125,6 +127,7 @@ void record_sample(unsigned char mcs, int rssi_sum, unsigned int rcv, unsigned i
 		rssi_idx = rssi - RSSI_MIN;
 	}
 
+	
 	pdr_cur = pdr_table[mcs][rssi_idx];
 	
 	if (pdr_cur == 0){
