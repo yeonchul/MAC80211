@@ -50,8 +50,9 @@ enum hrtimer_restart send_relay_callback(struct hrtimer *timer){
 		}
 
 		if(mncq->sys){
-			// printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", eid);
+			printk(KERN_INFO "All member of queue is systematic code, free mncq, eid = %x\n", mncq->eid);
 			mnc_queue_free(mncq);
+			return HRTIMER_NORESTART;
 		}
 
 		else{
@@ -92,14 +93,12 @@ void skb_decoding_sys(struct sk_buff *skb){
 	char *mh = skb_mac_header(skb);
 
 	for(i = 0; i < ETHERLEN; i++){
-		*(mh + ETHERLEN - 1 + 3 - i) = *(mh + ETHERLEN - 1 - i);
+		*(mh + ETHERLEN - 1 + 9 - i) = *(mh + ETHERLEN - 1 - i);
 	}
 
-	mh_pos += 3;
-
+	mh_pos += 9;
 	skb_set_mac_header(skb, mh_pos);
-
-	skb_pull(skb, 3);
+	skb_pull(skb, 9);
 }
 
 void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
@@ -215,7 +214,6 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 		m = (skb->data[3] >> 2);
 		eid = skb->data[4];
 		offset = (unsigned int) skb->data[5] << 24 | skb->data[6] << 16 | skb->data[7] << 8 | skb->data[8];
-	
 		update_table((unsigned int)seq, (unsigned int)eid, mcs, rssi, 1, (unsigned int)n, 100);
 
 		printk("id: %d k: %d n: %d seq: %d offset: %d m: %d\n", eid, k, n, seq, offset, m);
@@ -233,9 +231,9 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 			}
 		}
 
-		remain_time_us = cal_tx_time(6, 8 - seq, skb->len);
+		remain_time_us = cal_tx_time(mcs, n - seq, skb->len);
 		relay_time = ktime_set(0, remain_time_us * 1000 + tr_get_offset() * 1000);
-		printk("remain_time_us = %ld, seq = %d, skb->len = %d\n", remain_time_us, seq, skb->len);
+		printk("remain_time_us = %ld, seq = %d, mcs = %d, skb->len = %d\n", remain_time_us, seq, mcs, skb->len);
 
 		if(last_eid == eid){
 			int ret = hrtimer_cancel(&relay_hrtimer);
@@ -312,6 +310,10 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 
 		if(m != 0x3f){ // original packet
 			struct sk_buff *skb_temp = skb_copy(skb, GFP_ATOMIC);
+			printk("Decoding systematic code %d\n", seq);
+			
+			//kfree_skb(skb);
+			//return;
 			skb_decoding_sys(skb);
 			netif_receive_skb(skb);
 			skb = skb_temp;
@@ -323,7 +325,7 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 
 		skb_queue_tail(&(mncq->skbs), skb);
 
-		printk(KERN_INFO "eid = %x, k = %x, p = %x, m = %x, seq = %x, cjiffies = %lx, skb->len = %d, skb = %lx\n", eid, k, kp & 0x3, m, seq, cjiffies, skb->len, skb);
+		//printk(KERN_INFO "eid = %x, k = %x, p = %x, m = %x, seq = %x, cjiffies = %lx, skb->len = %d, skb = %lx\n", eid, k, kp & 0x3, m, seq, cjiffies, skb->len, skb);
 	}
 
 }
@@ -438,7 +440,7 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 	unsigned int k = kp >> 2;
 	unsigned int p = kp & 0x3;
 	unsigned int msize = k*p;
-	unsigned int mncheadsize = 4 + p*p*k;
+	unsigned int mncheadsize = 9 + p*p*k;
 	struct sk_buff *skb[k];
 	struct sk_buff *newskb[k];
 	bool is_sys[k];
@@ -466,7 +468,7 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 	// Check is_sys & Fill systematic code
 	for(i = 0; i < k; i++){
 		struct sk_buff *skb_temp = skb_dequeue(skbs);
-		unsigned int mindex = (skb_temp->data[2] >> 2);
+		unsigned int mindex = (skb_temp->data[3] >> 2);
 		if(mindex != 0x3f){
 			if(is_sys[mindex] == true){ // There are two skb to have same m
 				kfree_skb(skb_temp);
@@ -492,12 +494,13 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 			skb[i] = skb_dequeue(skbs);
 		}
 	}
+	for(i = 0; i < k; i++){
+		printk(KERN_INFO "is_sys[%x] = %x, skb[%x] = %lx\n", i, is_sys[i], i, skb[i]);
+	}
 
-//	for(i = 0; i < k; i++){
-//		printk(KERN_INFO "is_sys[%x] = %x, skb[%x] = %lx\n", i, is_sys[i], i, skb[i]);
-//	}
-
-/*  debuging tool
+	return true;
+//  debuging tool
+/*
 	for(i = 0; i < k; i++){
 		if(skb[i] != NULL){
 			skb_queue_tail(skbs, skb[i]);
@@ -522,13 +525,13 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 				for(m = 0; m < p; m++){
 					mp = m*p;
 					for(n = 0; n < p; n++){
-						coefficient[mrow+m][j+n] = skb[i]->data[4+jp+mp+n];
+						coefficient[mrow+m][j+n] = skb[i]->data[9+jp+mp+n];
 					}
 				}
 			}
 		}
 	}
-	
+
 	// Arr = LU
 	lu_fac(msize, msize, coefficient, U, L, pivot);
 
@@ -556,10 +559,12 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 		newskb[i] = skb_copy(skb[i], GFP_ATOMIC);
 	}
 
-	len = newskb[0]->len - (is_sys[0] ? 4 : mncheadsize);
+	len = newskb[0]->len - (is_sys[0] ? 9 : mncheadsize);
+	
 
 	// Decode skb and fill newskb
 	skb_substi(msize, k, p, U, L, pivot, skb, newskb, len, mncheadsize, is_sys);
+	
 
 	for(i = 0; i < k; i++){
 		if(!is_sys[i]){
@@ -590,7 +595,7 @@ void skb_substi(unsigned int msize, unsigned int k, unsigned int p, unsigned cha
 		for(j = 0; j < k; j++){
 			jp = j*p;
 			for(l = 0; l < p; l++){
-				b[jp + l][0] = t[jp + l][0] = skb[j]->data[(is_sys[j] ? 3 : mncheadsize) + i + l];
+				b[jp + l][0] = t[jp + l][0] = skb[j]->data[(is_sys[j] ? 9 : mncheadsize) + i + l];
 			}
 		}
 
