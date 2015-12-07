@@ -180,6 +180,7 @@ void decoding_try(struct sk_buff *skb, char rssi, unsigned char mcs)
 #endif
 
 		if(i == 0){
+			unsigned char mcs = 0;
 			printk(KERN_INFO "Initialize MNC\n");
 			mnc_queue_head_init(&list);
 			
@@ -494,11 +495,16 @@ bool skbs_decoding(struct sk_buff_head *skbs, struct sk_buff_head *newskbs, unsi
 			skb[i] = skb_dequeue(skbs);
 		}
 	}
+
+	/*
 	for(i = 0; i < k; i++){
 		printk(KERN_INFO "is_sys[%x] = %x, skb[%x] = %lx\n", i, is_sys[i], i, skb[i]);
 	}
 
 	return true;
+	*/
+
+
 //  debuging tool
 /*
 	for(i = 0; i < k; i++){
