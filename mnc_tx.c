@@ -25,7 +25,8 @@ static struct net_device *dev_prev;
 
 void cal_data(unsigned char *data, unsigned int p, unsigned char coefficient[][p], unsigned char *data_new);
 struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, unsigned char n, unsigned char seq, unsigned int offset);
-void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, struct sk_buff_head *skbs_result);
+//void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, struct sk_buff_head *skbs_result);
+void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char n, unsigned char id, unsigned int offset, struct sk_buff_head *skbs_result);
 static void mnc_tx_timer_func(unsigned long data);
 
 netdev_tx_t ieee80211_matrix_network_coding(struct sk_buff *skb, struct net_device *dev){
@@ -220,7 +221,7 @@ struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, un
 		for(i = 0; i < p; i++){
 			for(j = 0; j < p; j++){
 				get_random_bytes(&coefficient[i][j], 1);
-				*(data_new + 4 + l) = coefficient[i][j];
+				*(data_new + 9 + l) = coefficient[i][j];
 				l++;
 			}
 		}
@@ -237,13 +238,12 @@ struct sk_buff *make_skb_new(const struct sk_buff_head *skbs, unsigned int p, un
 	return skb_new;
 }
 
-void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char id, struct sk_buff_head *skbs_result){
+void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsigned char n, unsigned char id, unsigned int offset, struct sk_buff_head *skbs_result){
 	struct sk_buff *skb;
-
 	unsigned int k = skb_queue_len(skbs); // # of original packets
 	unsigned int j = 0;
 
-	const unsigned int mnc_hdrlen_sys = 3;
+	const unsigned int mnc_hdrlen_sys = 9;
 	unsigned int skb_len1;
 	
 	int nh_pos, h_pos;
@@ -305,8 +305,15 @@ void enqueue_skb_original(const struct sk_buff_head *skbs, unsigned int p, unsig
 		data_new_sys += ETHERHEADLEN;
 
 		*(data_new_sys) = (k << 2) | p;
-		*(data_new_sys+1) = id;
-		*(data_new_sys+2) = (j << 2);
+		*(data_new_sys+1) = n;
+		*(data_new_sys+2) = j;
+		*(data_new_sys+3) = (j << 2);
+		*(data_new_sys+4) = id;
+		*(data_new_sys+5) = (offset >> 24) & 0xff;
+		*(data_new_sys+6) = (offset >> 16) & 0xff;
+		*(data_new_sys+7) = (offset >> 8) & 0xff;
+		*(data_new_sys+8) = offset & 0xff;
+		
 		*(data_new_sys-2) = 0x08;
 		*(data_new_sys-1) = 0x10;
 
@@ -331,7 +338,7 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 	struct relay_info * info;
 	struct relay_info_list * r_list;
 	unsigned char remain_ori = tr_get_data_k();
-	unsigned char tx_num = tr_get_data_n();
+	//unsigned char tx_num = tr_get_data_n();
 	
 	netdev_tx_t ret = NETDEV_TX_OK;
 	netdev_tx_t ret_temp;
@@ -339,24 +346,23 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 	r_list = get_relay_list();
 	skb_queue_head_init(&skbs_result);
 
-	/*
 	for (info = r_list->next; info !=NULL; info = info->next){
 		if (info->type != 0)
 			continue;
 		
 		if(tr_get_sys() == 1){
+			printk("Systematic coding\n");
 			if (info->clout < remain_ori){
 				remain_ori -= info->clout;
 				continue;
 			}			
 			else {
 				unsigned char num = info->clout - remain_ori;
-				
 				remain_ori = 0;	
-				enqueue_skb_original(skbs, P, id, &skbs_result);
+				enqueue_skb_original(skbs, P, info->clout, id, 0, &skbs_result);
 				
 				for (m = 0; m < num; m++){
-					skb_temp = make_skb_new(skbs, P, id);
+					skb_temp = make_skb_new(skbs, P, id, info->clout, m+tr_get_data_k(), 0);
 					if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
 					else{ 
 						//set mcs in this line 
@@ -368,9 +374,10 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 			} // should be revisited			
 		}
 		else{
+			printk("Non-systematic coding\n");
 			for(m = 0; m < info->clout; m++){
-				//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
-				skb_temp = make_skb_new(skbs, P, id);
+				printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
+				skb_temp = make_skb_new(skbs, P, id, info->clout, m, 0);
 				if(skb_temp == NULL) printk(KERN_ERR "Error in making skb_new in %x\n", m);
 				else{
 					struct ieee80211_tx_info *tx_info = IEEE80211_SKB_CB(skb_temp);
@@ -380,8 +387,7 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 			}
 		}
 	}
-	*/
-
+/*
 	for(m = 0; m < tx_num; m++){
 		//printk(KERN_INFO "Make coded %dth packet, id = %x, n = %d\n", m, id, tr_get_data_n());
 		skb_temp = make_skb_new(skbs, P, id, tx_num, m, 0);
@@ -392,7 +398,7 @@ netdev_tx_t mnc_encoding_tx(struct sk_buff_head *skbs, struct net_device *dev, u
 			skb_queue_tail(&skbs_result, skb_temp);
 		}
 	}
-	
+*/	
 
 	/*
 	// Drop original packets

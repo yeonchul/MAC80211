@@ -3,6 +3,8 @@
 #include "tl_rx.h"
 #include <net/mac80211.h>
 
+#define PERIODIC_RUN 0
+
 static struct tr_info_list src_nbr_list;
 static struct relay_info_list relay_list;
 static struct dst_info_list dst_list;
@@ -10,10 +12,12 @@ static struct dst_info_list dst_list;
 static struct timer_list tl_rx_tr1_timer;
 static struct timer_list tl_rx_sndtf_timer;
 static struct timer_list tl_mcs_send_timer;
+static struct timer_list alg_timer;
 
 static void tl_rx_tr1_timer_func(unsigned long data);
 static void tl_rx_sndtf_timer_func(unsigned long data);
 static void tl_mcs_send_timer_func(unsigned long data);
+static void alg_timer_func(unsigned long data);
 
 static bool polling_state = false;
 static unsigned char polling_addr[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -30,6 +34,7 @@ bool tl_start_check(struct sk_buff *skb){
 	unsigned int i;
 	printk("tl_start_check\n");
 
+	
 	if(skb->len < 42+16+6){
 		printk("exception size tl_start\n");
 		return false;
@@ -39,12 +44,20 @@ bool tl_start_check(struct sk_buff *skb){
 		unsigned int ii = i*2;
 		if(memcmp(port, data + ii, 2)) return false;
 	}
+	
+//	printk("Packet: %d %d %d %d %d %d\n",  data[i*2], data[i*2+1], data[i*2+2], data[i*2+3], data[i*2+4], data[i*2+5]);
 
 	tl_start_time();
 
 	if(polling_state){
 		printk("Polling now!!!\n");
 		return false;
+	}
+
+	if (data[i*2] == 3){
+		printk("Stop Alg\n");
+		alg_timer_func(1);
+		return true;	
 	}
 
 	else{
@@ -54,10 +67,14 @@ bool tl_start_check(struct sk_buff *skb){
 		relay_info_list_purge(&relay_list);
 		dst_info_list_purge(&dst_list);
 		
+		alg_timer_func(1);	
+		//if(timer_pending(&alg_timer))	
+		//	del_timer(&alg_timer);
+		
 		//test_relay();
 
 		printk("Set Param, src = %d, sys = %d, data_k = %d, data_n = %d, tf_k = %d, tf_thre = %d, max_relay_n = %d\n", tr_get_src(), tr_get_sys(), tr_get_data_k(), tr_get_data_n(), tr_get_tf_k(), tr_get_tf_thre(), tr_get_max_relay_n());
-	
+			
 		tl_mcs_send_timer_func(0);
 
 	}
@@ -147,8 +164,11 @@ static void tl_rx_sndtf_timer_func(unsigned long data){
 	if(tr_info_check_nr_cnt(&src_nbr_list)){
 		polling_state = false;
 		printk("Relay Selection Start\n");
-		tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
-		send_setrelay();
+		
+		if (!timer_pending(&alg_timer))
+			alg_timer_func(0);
+		//tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+		//send_setrelay();
 	}
 	else{
 		tl_rx_tr1_timer_func(0);
@@ -198,8 +218,10 @@ static void tl_rx_tr1_timer_func(unsigned long data){
 				if(tr_info_check_nr_cnt(&src_nbr_list)){
 					polling_state = false;
 					printk("Relay Selection Start\n");
-					tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
-					send_setrelay();
+					if (!timer_pending(&alg_timer))
+						alg_timer_func(0);
+				//	tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+				//	send_setrelay();
 					return;
 				}
 			}
@@ -319,8 +341,11 @@ void tl_receive_skb_src(struct sk_buff *skb){
 							if(tr_info_check_nr_cnt(&src_nbr_list)){
 								polling_state = false;
 								printk("Relay Selection Start\n");
-								tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
-								send_setrelay();
+								
+								if (!timer_pending(&alg_timer))
+									alg_timer_func(0);
+								//tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+								//send_setrelay();
 							}
 							else{
 								tl_rx_tr1_timer_func(0);
@@ -651,5 +676,34 @@ void test_relay(){
 	relay_info_list_purge(&relays);
 	relay_info_list_purge(&src_snd_list);
 	dst_info_list_purge(&dsts);
-
 }
+
+
+static void alg_timer_func(unsigned long data){
+	static bool init = true;	
+
+	if (data == 0){
+		if (init == true){	
+			setup_timer(&alg_timer, &alg_timer_func, 0);
+			init = false;
+		}
+
+		printk("Run Algorithm\n");	
+		tl_select_relay(&src_nbr_list, &relay_list, &dst_list, src_batt);
+		send_setrelay();
+		
+#if PERIODIC_RUN
+		if(!timer_pending(&alg_timer))	
+			mod_timer(&alg_timer, jiffies + msecs_to_jiffies(10000));
+#endif
+	}
+	
+	if (data == 1){
+		printk("Stop algorithm\n");
+		if (timer_pending(&alg_timer))
+			del_timer(&alg_timer);
+		
+		init = true;
+	}
+}
+
