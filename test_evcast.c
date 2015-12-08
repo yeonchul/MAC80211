@@ -6,9 +6,9 @@
 int init_module(void)
 {
 	unsigned char i=0;
-	unsigned char total_n = 20;
-	unsigned char n_hop1 = 5;
-	unsigned char max_hop2 = 5;
+	unsigned char total_n = 2;
+	unsigned char n_hop1 = 2;
+	unsigned char max_hop2 = 2;
 	unsigned char batt_src = 0;
 	unsigned char b_v = 0;
 
@@ -51,20 +51,29 @@ int init_module(void)
 		for (m=NUM_MCS-1; m >= 0; m--){
 			unsigned int temp_rcv = 0;
 			get_random_bytes(&temp_rcv, 4);
-			temp_rcv %= num;
+			
+			if (i == 0){
+				temp_rcv %= 100;
+			}
+			else{
+				temp_rcv %= 50;
+			}
 			temp_rcv++;		
-	
+			
+			n_rcv[m] = temp_rcv;
+			/*	
 			if (m == NUM_MCS-1)
-				n_rcv[m] = temp_rcv;
 		
 			else{
 				while(temp_rcv < n_rcv[m+1]){
 					get_random_bytes(&temp_rcv, 4);
-					temp_rcv %= num;
+					
+					temp_rcv %= 50;
+
 					temp_rcv++;		
 				}	
 				n_rcv[m] = temp_rcv;	
-			}
+			}*/
 		}
 		 	
 		tr_info_insert(tr_info_create(addr, dev, num, n_rcv, rssi, batt), &total_list);
@@ -119,17 +128,7 @@ int init_module(void)
 				temp_rcv %= hop2->total_num;
 				temp_rcv++;		
 				
-				if (m == NUM_MCS-1)
-					n_rcv[m] = temp_rcv;
-		
-				else{
-					while(temp_rcv < n_rcv[m+1]){
-						get_random_bytes(&temp_rcv, 4);
-						temp_rcv %= hop2->total_num;
-						temp_rcv++;		
-					}	
-					n_rcv[m] = temp_rcv;	
-				}
+				n_rcv[m] = temp_rcv;
 			}
 
 			tr_info_insert(tr_info_create(hop2->addr, hop2->dev, hop2->total_num, n_rcv, rssi, hop2->batt), nbr_2hop_list);

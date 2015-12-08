@@ -4,6 +4,7 @@
 #define TIME_LIMIT 10000
 #define LOOKUP 1
 
+#define TEST 1
 static struct timespec tl_start, tl_end;
 
 void tl_start_time(){
@@ -818,6 +819,8 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 	#if 1
 	printk("Initialization of Destination List Complete, Num of Dest: %d\n", dst_list->qlen);
 	dst_info_list_print(dst_list);
+	max_round = dst_list->qlen;
+
 	while(!dst_all_zero(dst_list) && (used_time_us < max_time_us) && (round < max_round) ){
 		//struct dst_info* dst;
 		struct tr_info * hop1;
@@ -919,10 +922,12 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 	
 					if(total_cost == 0){
 						printk("cost is 0\n");
+						utility = 0;
 						continue;
 					}
-					
-					utility = user*10000000/total_cost;
+					else{	
+						utility = user*10000000/total_cost;
+					}
 					
 					printk("Type 1 Clout1: %d Rate1: %d -->  Utility: %d (User: %d Cost: %d Time: %d Charge: %d Capacity: %d)\n", clout1, rate1, utility, user, cost1, time_cost, charge1, capacity1);
 					
@@ -1029,10 +1034,12 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 
 				if(total_cost == 0){
 					printk("Zero cost\n");
+					utility = 0;
 					continue;
 				}
-								
-				utility = (user+user2)*10000000 / total_cost;					
+				else{					
+					utility = (user+user2)*10000000 / total_cost;
+				}					
 				
 				if (user == 0)
 				{
@@ -1147,6 +1154,9 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 					}
 
 					cost1 = total_cost;
+					
+					if (cost1 == 0)	
+						printk("Zero cost1\n");
 				}//if either 1-hop or the chosen srp is unserved
 				for(hop2 = (hop1->nbr_list).next; hop2 != NULL; hop2 = hop2->next){
 					unsigned char pr_dof2 = 0;  
@@ -1212,7 +1222,12 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 					time2+=cal_tx_time(rate2, remain_c, pkt_len);
 					charge = get_charge(hop1->batt);
 					capacity = get_capa(hop1->batt);			
-					
+				
+#if TEST
+					charge = 1;
+					capacity = 100;
+#endif
+	
 					if (charge == 1){
 						cost2 = time2*1000 / (omega*capacity);
 					}
@@ -1293,7 +1308,11 @@ void evcast_relay(struct tr_info_list *list, struct relay_info_list *relay_list,
 					else{
 						total_cost = cost1 + cost2 +  time3*1000 / capacity;	
 					}
-					utility = (user1+user2+user3)*10000000 / total_cost;					
+	
+					if (total_cost == 0)
+						utility = 0;
+					else
+						utility = (user1+user2+user3)*10000000 / total_cost;					
 
 					if (user1 == 0)
 					{
